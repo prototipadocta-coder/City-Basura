@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>City Basura - Videojuego Educativo por Los gatos brasileños</title>
+  
+  <!-- Tipografía Cartoon legible y amigable para niños de 5º grado -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    /* ==========================================================================
+       ESTILOS CSS - ESTILO VISUAL CARTOON / ANIMADO
+       Colores solicitados:
+       Fondo: #FFF3D6 (crema cálido)
+       Color Principal: #FF8A3D (naranja enérgico)
+       Color Secundario: #3DCB6C (verde ecológico brillante)
+       Bordes y Texto: #2D3142 (azul oscuro cartoon tipo cómic)
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      font-family: 'Rubik', sans-serif;
+      background-color: #FFF3D6;
+      color: #2D3142;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    /* Contenedor principal de estilo cómic */
+    .game-card {
+      width: 100%;
+      max-width: 860px;
+      background: #FFFDF7;
+      border: 4px solid #2D3142;
+      border-radius: 28px;
+      padding: 24px 32px;
+      box-shadow: 8px 8px 0px #2D3142;
+      position: relative;
+    }
+
+    /* Botones estilo Cartoon con sombra sólida y efecto de presión */
+    .btn {
+      font-family: 'Rubik', sans-serif;
+      font-weight: 800;
+      font-size: 16px;
+      border: 3px solid #2D3142;
+      border-radius: 16px;
+      padding: 12px 24px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+      box-shadow: 4px 4px 0px #2D3142;
+      text-transform: uppercase;
+    }
+
+    .btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0px #2D3142;
+    }
+
+    .btn-primary {
+      background-color: #FF8A3D;
+      color: #FFFFFF;
+    }
+
+    .btn-secondary {
+      background-color: #3DCB6C;
+      color: #FFFFFF;
+    }
+
+    .btn-dark {
+      background-color: #2D3142;
+      color: #FFFFFF;
+    }
+
+    /* Grillas y tarjetas informativas */
+    .comic-box {
+      background: #FFF3D6;
+      border: 3px solid #2D3142;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 4px 4px 0px #2D3142;
+    }
+
+    .character-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .char-card {
+      background: #FFFFFF;
+      border: 3px solid #2D3142;
+      border-radius: 16px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .char-card.selected {
+      background: #FF8A3D;
+      color: #FFFFFF;
+      transform: translateY(-4px);
+      box-shadow: 4px 4px 0px #2D3142;
+    }
+
+    /* Canvas del videojuego */
+    canvas {
+      width: 100%;
+      height: auto;
+      max-height: 480px;
+      background: #FEF3C7;
+      border: 4px solid #2D3142;
+      border-radius: 20px;
+      box-shadow: 6px 6px 0px #2D3142;
+      display: block;
+      margin: 12px 0;
+    }
+
+    /* Barra de Calidad de Aire / Oxígeno */
+    .air-bar-container {
+      width: 100%;
+      max-width: 220px;
+      height: 16px;
+      background: #E2E8F0;
+      border: 2px solid #2D3142;
+      border-radius: 20px;
+      overflow: hidden;
+    }
+
+    .air-bar-fill {
+      height: 100%;
+      background: #3DCB6C;
+      transition: width 0.3s ease;
+    }
+
+    /* Controles de contenedores táctiles */
+    .bins-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .bin-btn {
+      flex: 1;
+      padding: 8px 4px;
+      font-size: 11px;
+      font-weight: 800;
+      color: white;
+      border: 2px solid #2D3142;
+      border-radius: 12px;
+      cursor: pointer;
+      text-align: center;
+      box-shadow: 2px 2px 0px #2D3142;
+    }
+
+    /* Utilidades */
+    .hidden { display: none !important; }
+    .flex-between { display: flex; align-items: center; justify-content: space-between; }
+  </style>
+</head>
+<body>
+
+  <!-- ========================================================================
+       PANTALLA 1: HISTORIA Y CONTEXTO INICIAL
+       ======================================================================== -->
+  <div id="screen-story" class="game-card">
+    <div class="flex-between" style="border-bottom: 3px solid #FFF3D6; padding-bottom: 12px; margin-bottom: 16px;">
+      <div>
+        <h1 style="font-size: 28px; font-weight: 900; color: #2D3142;">CITY BASURA 🎮</h1>
+        <p style="font-size: 13px; font-weight: 700; color: #FF8A3D;">Creado por: Los gatos brasileños</p>
+      </div>
+      <span style="background: #FFF3D6; border: 2px solid #2D3142; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 800;">
+        Capítulo 1
+      </span>
+    </div>
+
+    <!-- Tres paneles ilustrados tipo historieta cómic -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px;">
+      <div class="comic-box" style="text-align: center;">
+        <div style="font-size: 40px; margin-bottom: 6px;">🌍🔥</div>
+        <h3 style="font-size: 14px; font-weight: 800; margin-bottom: 4px;">1. El Calentamiento</h3>
+        <p style="font-size: 12px; color: #4F5D75; line-height: 1.4;">Los humanos no cuidaban el medio ambiente y se generaba mucha basura provocando calentamiento global.</p>
+      </div>
+      <div class="comic-box" style="text-align: center;">
+        <div style="font-size: 40px; margin-bottom: 6px;">⚡☣️</div>
+        <h3 style="font-size: 14px; font-weight: 800; margin-bottom: 4px;">2. El Terremoto</h3>
+        <p style="font-size: 12px; color: #4F5D75; line-height: 1.4;">Unos días después hubo un terremoto y muchas basuras cayeron dentro de una planta química tóxica.</p>
+      </div>
+      <div class="comic-box" style="text-align: center;">
+        <div style="font-size: 40px; margin-bottom: 6px;">👾💨</div>
+        <h3 style="font-size: 14px; font-weight: 800; margin-bottom: 4px;">3. Nace Mr.Basura</h3>
+        <p style="font-size: 12px; color: #4F5D75; line-height: 1.4;">Se convirtieron en el monstruo de la basura regando desechos por todas partes. ¡La ciudad era un desastre!</p>
+      </div>
+    </div>
+
+    <div style="background: #FFF9EC; border: 3px solid #FF8A3D; border-radius: 16px; padding: 16px; margin-bottom: 20px;">
+      <p style="font-size: 14px; font-style: italic; color: #2D3142; line-height: 1.5;">
+        "Un grupo de amigos que estaban cerca de la ciudad se enteró de lo sucedido y se organizó para combatir al monstruo con el poder del reciclaje y salvar a todos."
+      </p>
+    </div>
+
+    <div class="flex-between">
+      <span style="font-size: 12px; font-weight: 700; color: #4F5D75;">¡Tú eres parte del equipo de amigos!</span>
+      <button class="btn btn-primary" onclick="showScreen('screen-problem')">
+        Ver la Problemática →
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       PANTALLA 2: LA PROBLEMÁTICA (EL RETO PRINCIPAL)
+       ======================================================================== -->
+  <div id="screen-problem" class="game-card hidden">
+    <div style="background: #FEE2E2; border: 3px solid #EF4444; border-radius: 16px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+      <span style="font-size: 32px;">⚠️</span>
+      <div>
+        <h2 style="font-size: 18px; font-weight: 900; color: #DC2626;">PROBLEMÁTICA PRINCIPAL</h2>
+        <p style="font-size: 12px; font-weight: 700; color: #2D3142;">Lo que debes resolver mientras juegas</p>
+      </div>
+    </div>
+
+    <div class="comic-box" style="margin-bottom: 16px;">
+      <h3 style="font-size: 18px; font-weight: 900; color: #2D3142; margin-bottom: 8px;">
+        "Había tanta basura que era casi imposible respirar" 💨🫁
+      </h3>
+      <p style="font-size: 13px; color: #4F5D75; line-height: 1.5; margin-bottom: 12px;">
+        La basura acumulada en las calles libera gases tóxicos y humo espeso. Si no la clasificamos rápido en los contenedores correspondientes, el medidor de aire puro bajará a cero y la misión fracasará.
+      </p>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <div style="background: white; border: 2px solid #2D3142; border-radius: 12px; padding: 10px;">
+          <strong style="color: #DC2626; font-size: 12px;">❌ Si la basura se queda en el suelo:</strong>
+          <p style="font-size: 11px; color: #4F5D75; margin-top: 4px;">El aire se vuelve oscuro y se acaba el oxígeno respirable.</p>
+        </div>
+        <div style="background: white; border: 2px solid #2D3142; border-radius: 12px; padding: 10px;">
+          <strong style="color: #16A34A; font-size: 12px;">✅ Si clasificas correctamente:</strong>
+          <p style="font-size: 11px; color: #4F5D75; margin-top: 4px;">El aire se purifica, ganas puntos y derrotas al monstruo.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-between">
+      <button class="btn btn-dark" onclick="showScreen('screen-story')">← Volver</button>
+      <button class="btn btn-secondary" onclick="showScreen('screen-chars')">Elegir Personaje →</button>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       PANTALLA 3: SELECCIÓN DE PERSONAJES
+       ======================================================================== -->
+  <div id="screen-chars" class="game-card hidden">
+    <h2 style="font-size: 24px; font-weight: 900; margin-bottom: 4px;">🧑🤝🧑 Elige a tu Amigo(a) Heroico</h2>
+    <p style="font-size: 12px; font-weight: 700; color: #FF8A3D; margin-bottom: 12px;">11 amigos listos para vencer a Mr.Basura</p>
+
+    <!-- Ficha del personaje seleccionado -->
+    <div id="char-spotlight" class="comic-box" style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+      <div id="char-badge" style="width: 64px; height: 64px; border-radius: 16px; border: 3px solid #2D3142; font-size: 36px; display: flex; align-items: center; justify-content: center; background: #FF8A3D;">🏃</div>
+      <div>
+        <h3 id="char-name" style="font-size: 20px; font-weight: 900;">Juan</h3>
+        <p id="char-role" style="font-size: 12px; font-weight: 800; color: #FF8A3D;">El Líder Veloz</p>
+        <p id="char-desc" style="font-size: 11px; color: #4F5D75; margin-top: 2px;">Corre rápido para no dejar caer ninguna botella.</p>
+      </div>
+    </div>
+
+    <!-- Grilla de los 11 personajes amigos + Mr.Basura -->
+    <div class="character-grid" id="characters-container"></div>
+
+    <div class="flex-between" style="margin-top: 16px;">
+      <button class="btn btn-dark" onclick="showScreen('screen-problem')">← Atrás</button>
+      <button class="btn btn-primary" onclick="showScreen('screen-levels')">Ir a Niveles →</button>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       PANTALLA 4: SELECCIÓN DE LOS 5 NIVELES
+       ======================================================================== -->
+  <div id="screen-levels" class="game-card hidden">
+    <h2 style="font-size: 24px; font-weight: 900; margin-bottom: 4px;">🕹️ Selecciona el Nivel de Dificultad</h2>
+    <p style="font-size: 12px; font-weight: 700; color: #FF8A3D; margin-bottom: 16px;">5 niveles progresivos para salvar la ciudad</p>
+
+    <div id="levels-container" style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;"></div>
+
+    <div class="flex-between">
+      <button class="btn btn-dark" onclick="showScreen('screen-chars')">← Personajes</button>
+      <span style="font-size: 12px; font-weight: 800; color: #4F5D75;" id="selected-char-indicator"></span>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       PANTALLA 5: EL JUEGO (CANVAS EN VIVO)
+       ======================================================================== -->
+  <div id="screen-game" class="game-card hidden">
+    <!-- Marcador Superior (HUD) -->
+    <div class="flex-between" style="background: #FFF3D6; border: 3px solid #2D3142; border-radius: 16px; padding: 10px 16px;">
+      <div>
+        <span id="hud-char-name" style="font-size: 14px; font-weight: 900;"></span>
+        <div style="font-size: 12px; font-weight: 800; color: #FF8A3D;">Puntos: <span id="hud-score">0</span> / <span id="hud-target">100</span></div>
+      </div>
+
+      <div style="text-align: center;">
+        <span style="font-size: 11px; font-weight: 800; text-transform: uppercase;">Calidad del Aire</span>
+        <div class="air-bar-container">
+          <div id="hud-air-bar" class="air-bar-fill" style="width: 80%;"></div>
+        </div>
+      </div>
+
+      <div style="text-align: right;">
+        <span style="font-size: 12px; font-weight: 800; color: #2D3142;">⏱️ <span id="hud-timer">60</span>s</span>
+        <div><button class="btn" style="padding: 4px 10px; font-size: 11px;" onclick="exitGame()">Salir</button></div>
+      </div>
+    </div>
+
+    <!-- Lienzo Canvas -->
+    <canvas id="gameCanvas" width="800" height="480"></canvas>
+
+    <!-- Fila de Contenedores de Reciclaje -->
+    <div class="bins-row">
+      <button class="bin-btn" style="background: #2563EB;" onclick="playerDeposit('blue')">🧴 PLÁSTICO (1)</button>
+      <button class="bin-btn" style="background: #64748B;" onclick="playerDeposit('gray')">📄 PAPEL (2)</button>
+      <button class="bin-btn" style="background: #16A34A;" onclick="playerDeposit('green')">🍎 ORGÁNICO (3)</button>
+      <button class="bin-btn" style="background: #D97706;" onclick="playerDeposit('yellow')">🍾 VIDRIO (4)</button>
+      <button class="bin-btn" style="background: #DC2626;" onclick="playerDeposit('hazard')">☢️ TÓXICO (5)</button>
+    </div>
+
+    <!-- Controles táctiles móviles -->
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-dark" style="padding: 10px 20px;" onmousedown="keys['ArrowLeft']=true" onmouseup="keys['ArrowLeft']=false" ontouchstart="keys['ArrowLeft']=true" ontouchend="keys['ArrowLeft']=false">◀</button>
+        <button class="btn btn-dark" style="padding: 10px 20px;" onmousedown="keys['ArrowRight']=true" onmouseup="keys['ArrowRight']=false" ontouchstart="keys['ArrowRight']=true" ontouchend="keys['ArrowRight']=false">▶</button>
+      </div>
+      <span style="font-size: 11px; font-weight: 700; color: #4F5D75;">Usa flechas o A/D para caminar. Recoge y toca el contenedor.</span>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       PANTALLA 6: REFLEXIÓN FINAL EDUCATIVA Y DIPLOMA
+       ======================================================================== -->
+  <div id="screen-victory" class="game-card hidden">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <div style="font-size: 50px;">🏆🌱</div>
+      <h2 style="font-size: 28px; font-weight: 900; color: #2D3142;">¡VICTORIA EN CITY BASURA!</h2>
+      <p style="font-size: 14px; font-weight: 700; color: #3DCB6C;">Has purificado el aire y derrotado al monstruo</p>
+    </div>
+
+    <!-- Mensaje reflexivo pedagógico para 5º grado -->
+    <div style="background: #FFF9EC; border: 3px solid #FF8A3D; border-radius: 18px; padding: 20px; margin-bottom: 20px;">
+      <h3 style="font-size: 16px; font-weight: 900; color: #FF8A3D; margin-bottom: 8px;">
+        📖 ¿QUÉ APRENDIMOS CON CITY BASURA? (Reflexión para la vida real)
+      </h3>
+      <p style="font-size: 13px; color: #2D3142; line-height: 1.6; margin-bottom: 12px;">
+        En el juego vimos que cuando la basura se riega por todas partes es <strong>casi imposible respirar</strong>. En nuestra vida cotidiana real:
+      </p>
+
+      <ul style="font-size: 12px; color: #4F5D75; line-height: 1.6; margin-left: 20px; margin-bottom: 12px;">
+        <li><strong>Separar en la fuente:</strong> Si ponemos el plástico, el papel y lo orgánico en recipientes distintos, no se pudren juntos y pueden transformarse en nuevos productos.</li>
+        <li><strong>Cuidar nuestros pulmones:</strong> El aire puro depende de ciudades limpias y de sembrar árboles en parques y colegios.</li>
+        <li><strong>Reducir antes que botar:</strong> La mejor basura es la que no se produce. ¡Usa botellas y bolsas reutilizables!</li>
+      </ul>
+
+      <div style="background: #DCFCE7; border: 2px solid #3DCB6C; border-radius: 12px; padding: 10px; font-size: 12px; font-weight: 800; color: #15803D;">
+        🌟 "Cuidar el planeta no es una misión de uno solo: ¡es el trabajo en equipo de amigos como tú!"
+      </div>
+    </div>
+
+    <!-- Diploma oficial -->
+    <div style="border: 2px dashed #2D3142; border-radius: 16px; padding: 14px; text-align: center; margin-bottom: 20px; background: white;">
+      <span style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #4F5D75;">Diploma Oficial</span>
+      <h4 style="font-size: 18px; font-weight: 900; color: #2D3142;">Guardián del Medio Ambiente de 5º Grado</h4>
+      <p style="font-size: 12px; font-weight: 700; color: #FF8A3D;">Juego completado con éxito · Creado por: Los gatos brasileños</p>
+    </div>
+
+    <div class="flex-between">
+      <button class="btn btn-primary" onclick="showScreen('screen-levels')">Volver a Jugar 🔄</button>
+      <button class="btn btn-secondary" onclick="alert('¡Excelente trabajo! Puedes editar y ampliar este código en Visual Studio Code.')">
+        ¡Misión Cumplida! ✨
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       CÓDIGO JAVASCRIPT DEL JUEGO COMPLETO
+       ======================================================================== -->
+  <script>
+    // 1. PERSONAJES DEL JUEGO (11 Amigos + Mr.Basura)
+    const CHARACTERS = [
+      { id: 'juan', name: 'Juan', role: 'El Líder Veloz', badge: '🏃', desc: 'Corre veloz para que nada toque el suelo.', color: '#FF8A3D', speed: 8 },
+      { id: 'sofi', name: 'Sofi', role: 'La Estratega Verde', badge: '🌿', desc: 'Experta en plantas y compostaje orgánico.', color: '#3DCB6C', speed: 7 },
+      { id: 'jesus', name: 'Jesus', role: 'El Defensor Cívico', badge: '🛡️', desc: 'Protege a sus amigos del humo tóxico.', color: '#3B82F6', speed: 7 },
+      { id: 'cami', name: 'Cami', role: 'La Inventora Eco', badge: '🔧', desc: 'Crea pinzas y máquinas recicladoras.', color: '#EC4899', speed: 7.2 },
+      { id: 'maria', name: 'Maria', role: 'Guardiana del Agua', badge: '💧', desc: 'Mantiene limpios ríos y caños.', color: '#06B6D4', speed: 7 },
+      { id: 'jose', name: 'Jose', role: 'Forzudo del Compost', badge: '💪', desc: 'Carga bolsas pesadas con facilidad.', color: '#8B5CF6', speed: 6.8 },
+      { id: 'ema', name: 'Ema', role: 'Detective Ambiental', badge: '🔍', desc: 'Encuentra basuritas diminutas.', color: '#F59E0B', speed: 7.3 },
+      { id: 'harry', name: 'Harry', role: 'Científico Solar', badge: '🧪', desc: 'Calcula cómo ahorrar energía.', color: '#10B981', speed: 7 },
+      { id: 'dembool', name: 'Dembool', role: 'Acróbata Urbano', badge: '⚡', desc: 'Esquiva obstáculos con agilidad.', color: '#EF4444', speed: 7.8 },
+      { id: 'col20', name: 'Col2.0', role: 'Robot de Chatarra', badge: '🤖', desc: 'Construido 100% con piezas recicladas.', color: '#6366F1', speed: 6.9 },
+      { id: 'sonia', name: 'Sonia', role: 'Artista de Reúso', badge: '🎨', desc: 'Convierte botellas en lindas macetas.', color: '#F43F5E', speed: 7.1 }
+    ];
+
+    // 2. CONFIGURACIÓN DE LOS 5 NIVELES CON PROGRESIÓN CLARA DE DIFICULTAD
+    const LEVELS = [
+      { id: 1, name: 'Nivel 1: El Barrio Inicial', diff: '1 - Fácil', desc: 'Residuos escolares y domésticos a ritmo relajado.', target: 80, time: 80, spawnRate: 1500, smogDecay: 0.02, bg: '#FEF3C7' },
+      { id: 2, name: 'Nivel 2: El Parque Central', diff: '2 - Medio', desc: 'Separación orgánica en el césped y restos de picnic.', target: 140, time: 65, spawnRate: 1200, smogDecay: 0.06, bg: '#D1FAE5' },
+      { id: 3, name: 'Nivel 3: La Gran Avenida', diff: '3 - Difícil', desc: 'Vidrio urbano, tráfico denso y niebla de smog creciente.', target: 220, time: 55, spawnRate: 900, smogDecay: 0.12, bg: '#FEE2E2' },
+      { id: 4, name: 'Nivel 4: La Planta Tóxica', diff: '4 - Extremo', desc: 'Desechos químicos corrosivos, baterías y vapores ácidos.', target: 320, time: 48, spawnRate: 700, smogDecay: 0.22, bg: '#EDE9FE' },
+      { id: 5, name: 'Nivel 5: Batalla Final Mr.Basura', diff: '5 - Nivel Dios', desc: 'Encuentro épico contra Mr.Basura en el epicentro tóxico.', target: 450, time: 75, spawnRate: 520, smogDecay: 0.35, bg: '#FEF08A', boss: true }
+    ];
+
+    // 3. ESTADO GLOBAL
+    let selectedChar = CHARACTERS[0];
+    let currentLevel = LEVELS[0];
+    let score = 0;
+    let airQuality = 80;
+    let timeLeft = 60;
+    let carriedTrash = null;
+    let isGameRunning = false;
+    let timerInterval = null;
+    let keys = {};
+
+    // 4. GENERADOR DE SONIDOS (Web Audio API)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playBeep(freq, type, duration) {
+      try {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch(e) {}
+    }
+
+    // 5. NAVEGACIÓN ENTRE PANTALLAS
+    function showScreen(screenId) {
+      document.querySelectorAll('.game-card').forEach(card => card.classList.add('hidden'));
+      document.getElementById(screenId).classList.remove('hidden');
+      if (screenId === 'screen-chars') renderCharacters();
+      if (screenId === 'screen-levels') renderLevels();
+    }
+
+    // Renderizar grilla de personajes
+    function renderCharacters() {
+      const container = document.getElementById('characters-container');
+      container.innerHTML = '';
+      CHARACTERS.forEach(c => {
+        const div = document.createElement('div');
+        div.className = `char-card ${selectedChar.id === c.id ? 'selected' : ''}`;
+        div.innerHTML = `<div style="font-size: 26px;">${c.badge}</div><div style="font-size: 12px; font-weight: 800; margin-top: 4px;">${c.name}</div>`;
+        div.onclick = () => {
+          selectedChar = c;
+          document.getElementById('char-name').innerText = c.name;
+          document.getElementById('char-role').innerText = c.role;
+          document.getElementById('char-desc').innerText = c.desc;
+          document.getElementById('char-badge').innerText = c.badge;
+          document.getElementById('char-badge').style.background = c.color;
+          renderCharacters();
+          playBeep(440, 'sine', 0.1);
+        };
+        container.appendChild(div);
+      });
+    }
+
+    // Renderizar lista de niveles
+    function renderLevels() {
+      const container = document.getElementById('levels-container');
+      container.innerHTML = '';
+      document.getElementById('selected-char-indicator').innerText = `Héroe: ${selectedChar.name} ${selectedChar.badge}`;
+      LEVELS.forEach(lvl => {
+        const div = document.createElement('div');
+        div.className = 'comic-box flex-between';
+        div.style.background = lvl.boss ? '#FEF08A' : 'white';
+        div.innerHTML = `
+          <div>
+            <span style="font-size: 10px; font-weight: 900; background: ${lvl.boss ? '#7C3AED' : '#2D3142'}; color: white; padding: 2px 8px; border-radius: 6px;">${lvl.diff}</span>
+            <h3 style="font-size: 15px; font-weight: 800; margin-top: 4px;">${lvl.name}</h3>
+            <p style="font-size: 11px; color: #4F5D75;">${lvl.desc}</p>
+            <p style="font-size: 10px; font-weight: 700; color: #FF8A3D; margin-top: 2px;">Meta: ${lvl.target} pts · Tiempo: ${lvl.time}s</p>
+          </div>
+          <button class="btn ${lvl.boss ? 'btn-secondary' : 'btn-primary'}" onclick="startLevel(${lvl.id})" style="padding: 8px 16px; font-size: 13px;">JUGAR ▶</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // 6. MOTOR DEL JUEGO (CANVAS 2D)
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    let playerX = 400;
+    let trashes = [];
+    let particles = [];
+    let floatingTexts = [];
+    let lastSpawn = 0;
+    let animId = null;
+
+    function startLevel(lvlId) {
+      currentLevel = LEVELS.find(l => l.id === lvlId);
+      score = 0;
+      airQuality = 80;
+      timeLeft = currentLevel.time;
+      trashes = [];
+      particles = [];
+      floatingTexts = [];
+      carriedTrash = null;
+      playerX = 400;
+      isGameRunning = true;
+
+      document.getElementById('hud-char-name').innerText = `${selectedChar.name} ${selectedChar.badge}`;
+      document.getElementById('hud-target').innerText = currentLevel.target;
+      document.getElementById('hud-score').innerText = score;
+      document.getElementById('hud-timer').innerText = timeLeft;
+
+      showScreen('screen-game');
+
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        if (!isGameRunning) return;
+        timeLeft--;
+        document.getElementById('hud-timer').innerText = timeLeft;
+        if (timeLeft <= 0) {
+          endGame(false, '¡Se agotó el tiempo! El aire continuó contaminado.');
+        }
+      }, 1000);
+
+      lastSpawn = performance.now();
+      cancelAnimationFrame(animId);
+      gameLoop(performance.now());
+    }
+
+    function gameLoop(now) {
+      if (!isGameRunning) return;
+
+      // Generar basura
+      if (now - lastSpawn > currentLevel.spawnRate) {
+        spawnTrash();
+        lastSpawn = now;
+      }
+
+      // Mover jugador
+      if (keys['ArrowLeft'] || keys['KeyA']) playerX -= selectedChar.speed;
+      if (keys['ArrowRight'] || keys['KeyD']) playerX += selectedChar.speed;
+      playerX = Math.max(30, Math.min(canvas.width - 30, playerX));
+
+      // Actualizar basura
+      let uncollectedOnGround = 0;
+      for (let i = trashes.length - 1; i >= 0; i--) {
+        const t = trashes[i];
+        t.y += t.speedY;
+
+        // Toca el suelo
+        if (t.y > canvas.height - 90) {
+          t.y = canvas.height - 90;
+          uncollectedOnGround++;
+        }
+
+        // Colisión con jugador para recoger
+        if (Math.abs(t.x - playerX) < 36 && Math.abs(t.y - (canvas.height - 70)) < 42 && !carriedTrash) {
+          carriedTrash = t;
+          
+          // Efecto visual: chispas y estrellas al desaparecer la basura del lugar
+          for (let p = 0; p < 10; p++) {
+            particles.push({
+              x: t.x,
+              y: t.y,
+              vx: (Math.random() - 0.5) * 6,
+              vy: -Math.random() * 4 - 2,
+              life: 25,
+              maxLife: 25,
+              color: p % 2 === 0 ? '#3DCB6C' : '#FF8A3D'
+            });
+          }
+
+          // Texto flotante de puntos en el lugar exacto de recogida
+          floatingTexts.push({
+            x: t.x,
+            y: t.y - 10,
+            text: `+${t.points} pts`,
+            life: 28,
+            maxLife: 28
+          });
+
+          // Desaparece inmediatamente del lugar en el suelo
+          trashes.splice(i, 1);
+          playBeep(520, 'triangle', 0.1);
+        }
+      }
+
+      // El aire decae con la basura en el suelo según la dificultad configurada
+      if (uncollectedOnGround > 0) {
+        airQuality = Math.max(0, airQuality - uncollectedOnGround * currentLevel.smogDecay);
+        if (airQuality <= 0) {
+          endGame(false, '¡El aire se volvió totalmente irrespirable!');
+          return;
+        }
+      }
+
+      // Actualizar barra de aire en HUD
+      const airBar = document.getElementById('hud-air-bar');
+      airBar.style.width = `${airQuality}%`;
+      airBar.style.background = airQuality < 35 ? '#EF4444' : '#3DCB6C';
+
+      // DIBUJAR EN EL CANVAS
+      ctx.fillStyle = currentLevel.bg;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Suelo
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(0, canvas.height - 80, canvas.width, 80);
+
+      // Línea de la calle
+      ctx.fillStyle = '#F8FAFC';
+      for (let lx = 10; lx < canvas.width; lx += 50) {
+        ctx.fillRect(lx, canvas.height - 40, 25, 4);
+      }
+
+      // Si es Nivel 5: Dibujar a Mr.Basura
+      if (currentLevel.boss) {
+        ctx.fillStyle = '#374151';
+        ctx.beginPath();
+        ctx.arc(400, 60, 40, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#EF4444';
+        ctx.font = 'bold 13px Rubik, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('👾 Mr.Basura (Jefe Tóxico)', 400, 20);
+      }
+
+      // Dibujar basuras con iconos y nombres realistas
+      trashes.forEach(t => {
+        ctx.font = '26px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t.emoji, t.x, t.y);
+
+        ctx.font = 'bold 9px Rubik, sans-serif';
+        ctx.fillStyle = '#1E293B';
+        ctx.fillText(t.name, t.x, t.y + 16);
+      });
+
+      // Dibujar partículas de recogida
+      for (let pIdx = particles.length - 1; pIdx >= 0; pIdx--) {
+        const p = particles[pIdx];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.25; // gravedad
+        p.life--;
+        if (p.life <= 0) {
+          particles.splice(pIdx, 1);
+        } else {
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, (p.life / p.maxLife) * 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // Dibujar textos flotantes de puntuación
+      for (let fIdx = floatingTexts.length - 1; fIdx >= 0; fIdx--) {
+        const ft = floatingTexts[fIdx];
+        ft.y -= 1.2;
+        ft.life--;
+        if (ft.life <= 0) {
+          floatingTexts.splice(fIdx, 1);
+        } else {
+          ctx.font = 'bold 12px Rubik, sans-serif';
+          ctx.fillStyle = '#F59E0B';
+          ctx.textAlign = 'center';
+          ctx.fillText(ft.text, ft.x, ft.y);
+        }
+      }
+
+      // Dibujar Personaje
+      ctx.fillStyle = selectedChar.color;
+      ctx.beginPath();
+      ctx.roundRect(playerX - 16, canvas.height - 75, 32, 36, 6);
+      ctx.fill();
+      ctx.strokeStyle = '#2D3142';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Cabeza
+      ctx.fillStyle = '#FED7AA';
+      ctx.beginPath();
+      ctx.arc(playerX, canvas.height - 86, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // Basura cargada sobre la cabeza
+      if (carriedTrash) {
+        ctx.font = '24px sans-serif';
+        ctx.fillText(carriedTrash.emoji, playerX, canvas.height - 110);
+
+        ctx.font = 'bold 10px Rubik, sans-serif';
+        ctx.fillStyle = '#FF8A3D';
+        ctx.fillText(carriedTrash.name, playerX, canvas.height - 130);
+      }
+
+      animId = requestAnimationFrame(gameLoop);
+    }
+
+    // Generador de basuras reales acordes a cada misión
+    function spawnTrash() {
+      let pool = [];
+
+      if (currentLevel.id === 1) {
+        // Nivel 1: Residuos Escolares y Domésticos
+        pool = [
+          { name: 'Botella PET', emoji: '🧴', correctBin: 'blue', points: 20 },
+          { name: 'Lata Refresco', emoji: '🥤', correctBin: 'blue', points: 25 },
+          { name: 'Brik Jugo', emoji: '🧃', correctBin: 'gray', points: 20 },
+          { name: 'Papas Fritas', emoji: '🥨', correctBin: 'blue', points: 15 },
+          { name: 'Vaso Plástico', emoji: '🥛', correctBin: 'blue', points: 15 }
+        ];
+      } else if (currentLevel.id === 2) {
+        // Nivel 2: Parque Central / Picnic
+        pool = [
+          { name: 'Cáscara Plátano', emoji: '🍌', correctBin: 'green', points: 30 },
+          { name: 'Manzana Mordida', emoji: '🍎', correctBin: 'green', points: 25 },
+          { name: 'Caja Pizza', emoji: '🍕', correctBin: 'green', points: 20 },
+          { name: 'Vaso de Café', emoji: '☕', correctBin: 'gray', points: 20 },
+          { name: 'Sándwich Wrap', emoji: '🥪', correctBin: 'blue', points: 20 }
+        ];
+      } else if (currentLevel.id === 3) {
+        // Nivel 3: Gran Avenida / Vidrio
+        pool = [
+          { name: 'Botella Vidrio', emoji: '🍾', correctBin: 'yellow', points: 35 },
+          { name: 'Frasco Ámbar', emoji: '🫙', correctBin: 'yellow', points: 35 },
+          { name: 'Periódico Mojado', emoji: '📰', correctBin: 'gray', points: 25 },
+          { name: 'Lata Conserva', emoji: '🥫', correctBin: 'blue', points: 30 },
+          { name: 'Neumático Auto', emoji: '🛞', correctBin: 'green', points: 45 }
+        ];
+      } else if (currentLevel.id === 4) {
+        // Nivel 4: Planta Tóxica / Industriales
+        pool = [
+          { name: 'Barril Químico', emoji: '🛢️', correctBin: 'hazard', points: 60 },
+          { name: 'Batería Ácida', emoji: '🔋', correctBin: 'hazard', points: 50 },
+          { name: 'Tubo Mercurio', emoji: '💡', correctBin: 'hazard', points: 45 },
+          { name: 'Bidón Aceite', emoji: '🛢️', correctBin: 'hazard', points: 45 },
+          { name: 'Circuito E-Waste', emoji: '📟', correctBin: 'hazard', points: 40 }
+        ];
+      } else {
+        // Nivel 5: Epicentro / Mr.Basura
+        pool = [
+          { name: 'Núcleo Fango', emoji: '☢️', correctBin: 'hazard', points: 75 },
+          { name: 'Celda Nuclear', emoji: '⚡', correctBin: 'hazard', points: 70 },
+          { name: 'Lodo Mutante', emoji: '👾', correctBin: 'hazard', points: 60 },
+          { name: 'Canister Aire Puro', emoji: '💨', correctBin: 'blue', points: 80 },
+          { name: 'Cápsula Ozono', emoji: '💎', correctBin: 'yellow', points: 90 }
+        ];
+      }
+
+      const item = pool[Math.floor(Math.random() * pool.length)];
+      // Velocidad progresiva por nivel
+      const speedY = 1.0 + currentLevel.id * 0.4 + Math.random() * 0.5;
+
+      trashes.push({
+        x: 40 + Math.random() * (canvas.width - 80),
+        y: currentLevel.boss ? 90 : 10,
+        name: item.name,
+        emoji: item.emoji,
+        correctBin: item.correctBin,
+        points: item.points,
+        speedY
+      });
+    }
+
+    // Clasificar residuo
+    function playerDeposit(binType) {
+      if (!carriedTrash || !isGameRunning) return;
+
+      if (carriedTrash.correctBin === binType) {
+        score += carriedTrash.points;
+        const airBoost = currentLevel.id === 1 ? 18 : currentLevel.id === 2 ? 14 : currentLevel.id === 3 ? 12 : 10;
+        airQuality = Math.min(100, airQuality + airBoost);
+        document.getElementById('hud-score').innerText = score;
+        playBeep(880, 'sine', 0.15);
+        carriedTrash = null;
+
+        if (score >= currentLevel.target) {
+          endGame(true, '¡Nivel Superado con Éxito!');
+        }
+      } else {
+        airQuality = Math.max(0, airQuality - 8);
+        playBeep(160, 'sawtooth', 0.2);
+        alert('¡Contenedor incorrecto! Recuerda: Azul=Plástico/Envases, Gris=Papel/Cartón, Verde=Orgánico, Amarillo=Vidrio, Rojo=Tóxico.');
+      }
+    }
+
+    function endGame(victory, msg) {
+      isGameRunning = false;
+      clearInterval(timerInterval);
+      cancelAnimationFrame(animId);
+
+      if (victory) {
+        if (currentLevel.id === 5) {
+          showScreen('screen-victory');
+        } else {
+          alert(`🎉 ¡Excelente! ${msg}`);
+          showScreen('screen-levels');
+        }
+      } else {
+        alert(`😢 ${msg}`);
+        showScreen('screen-levels');
+      }
+    }
+
+    function exitGame() {
+      isGameRunning = false;
+      clearInterval(timerInterval);
+      cancelAnimationFrame(animId);
+      showScreen('screen-levels');
+    }
+
+    // Controles por teclado
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (e.key === '1') playerDeposit('blue');
+      if (e.key === '2') playerDeposit('gray');
+      if (e.key === '3') playerDeposit('green');
+      if (e.key === '4') playerDeposit('yellow');
+      if (e.key === '5') playerDeposit('hazard');
+    });
+
+    window.addEventListener('keyup', e => {
+      keys[e.code] = false;
+    });
+
+    // Iniciar con la pantalla de historia
+    showScreen('screen-story');
+  </script>
+</body>
+</html>

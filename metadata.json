@@ -1,0 +1,6 @@
+{
+  "name": "City Basura - Videojuego Primera Persona",
+  "description": "Videojuego en primera persona estilo voxel donde limpias y reciclas la ciudad: recoge basura, clasifica residuos y transforma tu vecindario.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

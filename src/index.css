@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Pixelify Sans', 'Rubik', sans-serif;
+  }
+}
+
+/* Voxel 3D button border styling matching the image */
+.voxel-btn-blue {
+  background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 60%, #1e40af 100%);
+  border: 4px solid #0f172a;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.4), inset 0 -4px 0 rgba(0, 0, 0, 0.35), 0 6px 0 #0f172a, 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+.voxel-btn-blue:hover {
+  background: linear-gradient(180deg, #60a5fa 0%, #2563eb 60%, #1d4ed8 100%);
+}
+
+.voxel-btn-green {
+  background: linear-gradient(180deg, #22c55e 0%, #16a34a 60%, #15803d 100%);
+  border: 4px solid #0f172a;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.4), inset 0 -4px 0 rgba(0, 0, 0, 0.35), 0 6px 0 #0f172a, 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+.voxel-btn-green:hover {
+  background: linear-gradient(180deg, #4ade80 0%, #22c55e 60%, #16a34a 100%);
+}
+
+.voxel-btn-red {
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 60%, #b91c1c 100%);
+  border: 4px solid #0f172a;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.4), inset 0 -4px 0 rgba(0, 0, 0, 0.35), 0 6px 0 #0f172a, 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+.voxel-btn-red:hover {
+  background: linear-gradient(180deg, #f87171 0%, #ef4444 60%, #dc2626 100%);
+}
+
+.voxel-btn-gray {
+  background: linear-gradient(180deg, #64748b 0%, #475569 60%, #334155 100%);
+  border: 4px solid #0f172a;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.3), inset 0 -4px 0 rgba(0, 0, 0, 0.4), 0 6px 0 #0f172a, 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+.voxel-btn-gray:hover {
+  background: linear-gradient(180deg, #94a3b8 0%, #64748b 60%, #475569 100%);
+}
+
+.voxel-btn-purple {
+  background: linear-gradient(180deg, #9333ea 0%, #7e22ce 60%, #6b21a8 100%);
+  border: 4px solid #0f172a;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.35), inset 0 -4px 0 rgba(0, 0, 0, 0.35), 0 6px 0 #0f172a, 0 10px 15px rgba(0, 0, 0, 0.5);
+}
+
+.voxel-btn-purple:hover {
+  background: linear-gradient(180deg, #a855f7 0%, #9333ea 60%, #7e22ce 100%);
+}
+
+/* Button active / pressed state */
+.voxel-btn:active {
+  transform: translateY(4px);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.2), inset 0 -2px 0 rgba(0, 0, 0, 0.4), 0 2px 0 #0f172a, 0 4px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Modal window voxel frame */
+.voxel-modal-frame {
+  background: #1e293b;
+  border: 4px solid #0f172a;
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.2), inset 0 -4px 0 rgba(0, 0, 0, 0.4), 0 12px 30px rgba(0, 0, 0, 0.8);
+}
+
+/* Pixel text stroke */
+.text-pixel-stroke {
+  text-shadow:
+    -2px -2px 0 #000,
+     2px -2px 0 #000,
+    -2px  2px 0 #000,
+     2px  2px 0 #000,
+     0px  3px 0 #000,
+     3px  0px 0 #000;
+}
+
+.text-stroke-heavy {
+  text-shadow:
+    -3px -3px 0 #000,
+     3px -3px 0 #000,
+    -3px  3px 0 #000,
+     3px  3px 0 #000,
+     0px  4px 0 #000,
+     4px  0px 0 #000,
+     0px  6px 8px rgba(0,0,0,0.8);
+}
+
+/* Idle breathing animation for voxel arm */
+@keyframes armBreathe {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-1deg);
+  }
+}
+
+.animate-arm-idle {
+  animation: armBreathe 3.5s ease-in-out infinite;
+}
+
+/* Cloud drift */
+@keyframes cloudDrift {
+  0% {
+    transform: translateX(-5%);
+  }
+  100% {
+    transform: translateX(5%);
+  }
+}
+
+.animate-cloud-drift {
+  animation: cloudDrift 20s ease-in-out infinite alternate;
+}
+
+/* Flag flutter */
+@keyframes flagWave {
+  0%, 100% {
+    transform: skewY(0deg) scaleY(1);
+  }
+  50% {
+    transform: skewY(2deg) scaleY(1.02);
+  }
+}
+
+.animate-flag-wave {
+  animation: flagWave 2s ease-in-out infinite;
+  transform-origin: left center;
+}

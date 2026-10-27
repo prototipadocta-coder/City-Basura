@@ -14,15 +14,6 @@ export interface DistrictInfo {
   description: string;
 }
 
-// Mark a pedestrian crossing at the residential-school entrance.
-const crossingMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
-for (let x = -5.2; x <= 5.2; x += 1.45) {
-  const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 2.8), crossingMat);
-  stripe.rotation.x = -Math.PI / 2;
-  stripe.position.set(x, 0.025, 11);
-  scene.add(stripe);
-}
-
 export const DISTRICTS: DistrictInfo[] = [
   {
     id: 'residencial',
@@ -178,6 +169,15 @@ export function buildNeighborhoodStreet(
     dash.rotation.x = -Math.PI / 2;
     dash.position.set(0, 0.02, z);
     scene.add(dash);
+  }
+
+  // Mark a pedestrian crossing at the residential-school entrance.
+  const crossingMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+  for (let x = -5.2; x <= 5.2; x += 1.45) {
+    const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 2.8), crossingMat);
+    stripe.rotation.x = -Math.PI / 2;
+    stripe.position.set(x, 0.025, 11);
+    scene.add(stripe);
   }
 
   // 2. EXTENDED SIDEWALKS

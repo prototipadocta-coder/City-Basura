@@ -17,6 +17,8 @@ interface FirstPersonGameProps {
   roomName?: string;
   quality: 'alta' | 'media' | 'baja';
   fov: number;
+  mouseSensitivity: number;
+  invertY: boolean;
 }
 
 export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
@@ -27,6 +29,8 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
   roomName,
   quality,
   fov,
+  mouseSensitivity,
+  invertY,
 }) => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [isPaused, setIsPaused] = useState(false);
@@ -69,8 +73,36 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
   isPointerLockedRef.current = isPointerLocked;
   const movementInputRef = useRef({ moveForward, moveBackward, moveLeft, moveRight });
   movementInputRef.current = { moveForward, moveBackward, moveLeft, moveRight };
+  const touchLookRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const isTouchPointerRef = useRef(false);
+  const mouseSettingsRef = useRef({ sensitivity: mouseSensitivity, invertY });
+  mouseSettingsRef.current = { sensitivity: mouseSensitivity, invertY };
   const onReturnToMenuRef = useRef(onReturnToMenu);
   onReturnToMenuRef.current = onReturnToMenu;
+
+  const setGamePaused = useCallback((paused: boolean) => {
+    isPausedRef.current = paused;
+    setIsPaused(paused);
+    if (paused && document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+  }, []);
+
+  const togglePause = useCallback(() => {
+    setGamePaused(!isPausedRef.current);
+  }, [setGamePaused]);
+
+  const createMovementHandlers = (setMoving: React.Dispatch<React.SetStateAction<boolean>>) => ({
+    onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      event.preventDefault();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setMoving(true);
+    },
+    onPointerUp: () => setMoving(false),
+    onPointerCancel: () => setMoving(false),
+    onLostPointerCapture: () => setMoving(false),
+  });
 
   // Engine references
   const gameRef = useRef<{
@@ -394,7 +426,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
             if (barrier && !barrier.isUnlocked) {
               barrier.setUnlocked(true);
               confetti({ particleCount: 110, spread: 85, origin: { y: 0.6 } });
-              soundManager.playBonus();
+              soundManager.playRecycleSuccess();
               showNotification(
                 `🎉 ¡BARRIO PURIFICADO! La barrera hacia ${barrier.targetDistrictName} se ha DESBLOQUEADO. ¡Avanza!`,
                 'text-emerald-300'
@@ -687,9 +719,19 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     // Listeners with handleInteractionRef to avoid stale closures
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!gameRef.current) return;
+      if (e.code === 'ArrowUp' || e.code === 'ArrowDown' || e.code === 'ArrowLeft'
+        || e.code === 'ArrowRight' || e.code === 'Space') {
+        e.preventDefault();
+      }
+
+      if (e.code === 'Escape' || e.code === 'KeyP') {
+        if (!e.repeat) togglePause();
+        return;
+      }
+      if (isPausedRef.current || e.repeat) return;
+
       gameRef.current.keys[e.code] = true;
-      if (e.code === 'KeyE') handleInteractionRef.current();
-      if (e.code === 'Escape') setIsPaused((p) => !p);
+      if (e.code === 'KeyE' || e.code === 'Space') handleInteractionRef.current();
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -697,7 +739,17 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       gameRef.current.keys[e.code] = false;
     };
 
+    const handleWindowBlur = () => {
+      if (!gameRef.current) return;
+      gameRef.current.keys = {};
+      setMoveForward(false);
+      setMoveBackward(false);
+      setMoveLeft(false);
+      setMoveRight(false);
+    };
+
     const handleCanvasClick = () => {
+      if (isTouchPointerRef.current || window.matchMedia('(pointer: coarse)').matches) return;
       if (!isPointerLockedRef.current) {
         container.requestPointerLock?.();
       } else {
@@ -711,17 +763,50 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       setIsPointerLocked(pointerLocked);
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isPointerLockedRef.current || !gameRef.current || isPausedRef.current) return;
-      const sensitivity = 0.0022;
-      gameRef.current.yaw -= e.movementX * sensitivity;
-      gameRef.current.pitch -= e.movementY * sensitivity;
+    const applyLookDelta = (deltaX: number, deltaY: number) => {
+      if (!gameRef.current || isPausedRef.current) return;
+      const { sensitivity: mouseSensitivityValue, invertY: invertMouseY } = mouseSettingsRef.current;
+      const sensitivity = 0.0022 * mouseSensitivityValue;
+      gameRef.current.yaw -= deltaX * sensitivity;
+      gameRef.current.pitch -= deltaY * sensitivity * (invertMouseY ? -1 : 1);
       gameRef.current.pitch = Math.max(-Math.PI / 2.3, Math.min(Math.PI / 2.3, gameRef.current.pitch));
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPointerLockedRef.current) return;
+      applyLookDelta(e.movementX, e.movementY);
+    };
+
+    const handleTouchLookStart = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch' || isPausedRef.current || !gameRef.current) return;
+      e.preventDefault();
+      isTouchPointerRef.current = true;
+      touchLookRef.current = { pointerId: e.pointerId, x: e.clientX, y: e.clientY };
+      container.setPointerCapture(e.pointerId);
+    };
+
+    const handleTouchLookMove = (e: PointerEvent) => {
+      const pointer = touchLookRef.current;
+      if (e.pointerType !== 'touch' || !pointer || pointer.pointerId !== e.pointerId) return;
+      e.preventDefault();
+      applyLookDelta(e.clientX - pointer.x, e.clientY - pointer.y);
+      pointer.x = e.clientX;
+      pointer.y = e.clientY;
+    };
+
+    const clearTouchLook = (e: PointerEvent) => {
+      if (touchLookRef.current?.pointerId === e.pointerId) touchLookRef.current = null;
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleWindowBlur);
     container.addEventListener('click', handleCanvasClick);
+    container.addEventListener('pointerdown', handleTouchLookStart);
+    container.addEventListener('pointermove', handleTouchLookMove);
+    container.addEventListener('pointerup', clearTouchLook);
+    container.addEventListener('pointercancel', clearTouchLook);
+    container.addEventListener('lostpointercapture', clearTouchLook);
     document.addEventListener('pointerlockchange', handlePointerLockChange);
     document.addEventListener('mousemove', handleMouseMove);
 
@@ -957,8 +1042,14 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('resize', handleResize);
       container.removeEventListener('click', handleCanvasClick);
+      container.removeEventListener('pointerdown', handleTouchLookStart);
+      container.removeEventListener('pointermove', handleTouchLookMove);
+      container.removeEventListener('pointerup', clearTouchLook);
+      container.removeEventListener('pointercancel', clearTouchLook);
+      container.removeEventListener('lostpointercapture', clearTouchLook);
       document.removeEventListener('pointerlockchange', handlePointerLockChange);
       document.removeEventListener('mousemove', handleMouseMove);
 
@@ -970,12 +1061,12 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [fov, quality, character, level, triggerGateAlert, showNotification]);
+  }, [fov, quality, character, level, triggerGateAlert, showNotification, togglePause]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden select-none font-['Pixelify_Sans',sans-serif]">
       {/* 3D WebGL Canvas */}
-      <div ref={mountRef} className="absolute inset-0 w-full h-full cursor-crosshair" />
+      <div ref={mountRef} className="absolute inset-0 w-full h-full touch-none cursor-crosshair" />
 
       {/* Smog Fog Screen Tint when Air Quality is dangerously low */}
       {airQuality < 45 && (
@@ -1097,9 +1188,9 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           </div>
 
           <button
-            onClick={() => setIsPaused(true)}
+            onClick={() => setGamePaused(true)}
             className="w-10 h-10 rounded-xl bg-slate-900/90 border-2 border-slate-700 hover:border-slate-500 flex items-center justify-center text-white shadow-[3px_3px_0_#000] cursor-pointer"
-            title="Pausar juego (ESC)"
+            title="Pausar juego (ESC o P)"
           >
             <Pause className="w-5 h-5" />
           </button>
@@ -1117,6 +1208,10 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
             ? `Purificación de Mr.Basura: ${100 - bossHp}%`
             : `Residuos entregados: ${recycledCount}/${level.targetTrash}`}
         </div>
+      </div>
+
+      <div className="absolute top-24 right-3 z-30 max-w-48 rounded-lg bg-slate-950/80 px-2 py-1 text-[10px] leading-snug text-slate-200 pointer-events-none md:hidden">
+        Arrastra para mirar · Mantén las flechas para caminar · ACCIÓN recoge o deposita
       </div>
 
       {/* Eco-Barrier Blocked Warning Alert */}
@@ -1250,7 +1345,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
             </span>
           </div>
           <div className="text-[10px] text-emerald-400 mt-0.5">
-            {level.bossMode ? '¡Lleva al contenedor para disparar rayos!' : 'Deposita en contenedores de la acera ♻️'}
+            {level.bossMode ? '¡Lleva al contenedor para disparar rayos!' : '[E] / [Espacio] recoger o depositar'}
           </div>
         </div>
       </div>
@@ -1263,7 +1358,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
             <span>Haz clic en la pantalla para controlar la vista con el ratón</span>
           </div>
           <p className="text-xs text-slate-300">
-            Usa [W, A, S, D] para caminar y [E] o Clic para recoger basura
+            Camina con [W, A, S, D] o flechas · Acción [E] o [Espacio] · Pausa [ESC] o [P]
           </p>
         </div>
       )}
@@ -1271,31 +1366,31 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       {/* Mobile Touch Virtual Controls */}
       <div className="absolute bottom-20 left-4 z-30 flex flex-col items-center gap-1 md:hidden pointer-events-auto">
         <button
-          onTouchStart={() => setMoveForward(true)}
-          onTouchEnd={() => setMoveForward(false)}
-          className="w-12 h-12 bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+          {...createMovementHandlers(setMoveForward)}
+          className="w-12 h-12 touch-none select-none bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+          aria-label="Caminar hacia adelante"
         >
           ▲
         </button>
         <div className="flex gap-1">
           <button
-            onTouchStart={() => setMoveLeft(true)}
-            onTouchEnd={() => setMoveLeft(false)}
-            className="w-12 h-12 bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+            {...createMovementHandlers(setMoveLeft)}
+            className="w-12 h-12 touch-none select-none bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+            aria-label="Caminar a la izquierda"
           >
             ◀
           </button>
           <button
-            onTouchStart={() => setMoveBackward(true)}
-            onTouchEnd={() => setMoveBackward(false)}
-            className="w-12 h-12 bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+            {...createMovementHandlers(setMoveBackward)}
+            className="w-12 h-12 touch-none select-none bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+            aria-label="Caminar hacia atrás"
           >
             ▼
           </button>
           <button
-            onTouchStart={() => setMoveRight(true)}
-            onTouchEnd={() => setMoveRight(false)}
-            className="w-12 h-12 bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+            {...createMovementHandlers(setMoveRight)}
+            className="w-12 h-12 touch-none select-none bg-slate-800/80 border-2 border-white/50 rounded-lg text-white font-bold active:bg-emerald-600"
+            aria-label="Caminar a la derecha"
           >
             ▶
           </button>
@@ -1307,6 +1402,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         <button
           onClick={() => handleInteractionRef.current()}
           className="w-16 h-16 rounded-full bg-emerald-600 border-4 border-black text-white font-bold text-sm shadow-[0_4px_0_#000] active:translate-y-1 flex items-center justify-center cursor-pointer"
+          aria-label="Recoger residuo o depositar en el contenedor"
         >
           ACCIÓN
         </button>
@@ -1325,7 +1421,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
               <button
                 onClick={() => {
                   soundManager.playClick();
-                  setIsPaused(false);
+                  setGamePaused(false);
                 }}
                 className="voxel-btn-green w-full py-3 rounded-xl font-bold text-lg text-white cursor-pointer"
               >
@@ -1335,7 +1431,8 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
               <button
                 onClick={() => {
                   soundManager.playClick();
-                  onReturnToMenu();
+                  if (document.pointerLockElement) document.exitPointerLock();
+                  onReturnToMenuRef.current();
                 }}
                 className="voxel-btn-red w-full py-3 rounded-xl font-bold text-lg text-white cursor-pointer flex items-center justify-center gap-2"
               >

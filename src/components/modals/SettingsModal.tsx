@@ -161,6 +161,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
               </div>
 
+              <div>
+                <div className="flex justify-between text-xs text-slate-300 mb-1">
+                  <span>Sensibilidad del ratón</span>
+                  <span className="font-mono">{settings.mouseSensitivity.toFixed(1)}x</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.5"
+                  max="2"
+                  step="0.1"
+                  value={settings.mouseSensitivity}
+                  onChange={(e) => onUpdateSettings({ mouseSensitivity: parseFloat(e.target.value) })}
+                  className="w-full accent-emerald-400 cursor-pointer"
+                />
+              </div>
+
+              <label className="flex items-center justify-between pt-1 text-xs text-slate-300">
+                <span>Invertir eje vertical del ratón</span>
+                <input
+                  type="checkbox"
+                  checked={settings.invertY}
+                  onChange={(e) => onUpdateSettings({ invertY: e.target.checked })}
+                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                />
+              </label>
+
               <div className="flex items-center justify-between pt-1">
                 <span className="text-xs text-slate-300">Filtro Retro CRT Scanlines</span>
                 <input
@@ -182,7 +208,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded border border-slate-700">
                 <span className="text-slate-400">Moverse</span>
-                <span className="font-mono text-emerald-400 font-bold">W A S D</span>
+                <span className="font-mono text-emerald-400 font-bold">W A S D / Flechas</span>
               </div>
               <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded border border-slate-700">
                 <span className="text-slate-400">Mirar</span>
@@ -190,11 +216,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
               <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded border border-slate-700">
                 <span className="text-slate-400">Recoger Basura</span>
-                <span className="font-mono text-emerald-400 font-bold">[E] o Clic</span>
+                <span className="font-mono text-emerald-400 font-bold">[E] / [Espacio] / Clic</span>
               </div>
               <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded border border-slate-700">
                 <span className="text-slate-400">Pausar / Menú</span>
-                <span className="font-mono text-emerald-400 font-bold">ESC</span>
+                <span className="font-mono text-emerald-400 font-bold">[ESC] / [P]</span>
               </div>
             </div>
           </div>

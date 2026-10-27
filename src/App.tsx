@@ -245,6 +245,8 @@ export default function App() {
           roomName={activeMultiplayerRoom}
           quality={settings.graphicsQuality}
           fov={settings.fov}
+          mouseSensitivity={settings.mouseSensitivity}
+          invertY={settings.invertY}
         />
       ) : (
         /* INITIAL SCREEN (MATCHING FIRST IMAGE EXACTLY) */

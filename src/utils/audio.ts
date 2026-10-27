@@ -185,6 +185,33 @@ class SoundManager {
       // Ignore
     }
   }
+
+  // Short descending tone for invalid actions and blocked checkpoints
+  playError() {
+    if (this.isMuted) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(240, now);
+      osc.frequency.exponentialRampToValueAtTime(110, now + 0.12);
+
+      const volume = 0.12 * this.sfxVolume * this.masterVolume;
+      gain.gain.setValueAtTime(volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.14);
+    } catch {
+      // AudioContext may be blocked before interaction
+    }
+  }
 }
 
 export const soundManager = new SoundManager();

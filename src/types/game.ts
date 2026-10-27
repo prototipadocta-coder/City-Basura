@@ -99,6 +99,7 @@ export interface LevelConfig {
   bossMode?: boolean;
   description: string;
   missionContext: string;
+  missionDistrictId: NonNullable<TrashItem['districtId']>;
   allowedModelTypes: TrashModelType[];
   hazardSpeedMultiplier?: number;
 }

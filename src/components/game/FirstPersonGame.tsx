@@ -48,12 +48,12 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
   const districtToastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Trash tracking per neighborhood (scaled progressively)
-  const [districtTrashLeft, setDistrictTrashLeft] = useState<{ [id: string]: number }>({
-    residencial: 5,
-    comercial: 8,
-    industrial: 11,
-    parque: 14,
-  });
+  const [districtTrashLeft, setDistrictTrashLeft] = useState<{ [id: string]: number }>(() => ({
+    residencial: level.missionDistrictId === 'residencial' ? level.targetTrash : 0,
+    comercial: level.missionDistrictId === 'comercial' ? level.targetTrash : 0,
+    industrial: level.missionDistrictId === 'industrial' ? level.targetTrash : 0,
+    parque: level.missionDistrictId === 'parque' ? level.targetTrash : 0,
+  }));
   const [gateWarningToast, setGateWarningToast] = useState<string | null>(null);
   const [nearestTrashHint, setNearestTrashHint] = useState<string | null>(null);
   const lastGateAlertTimeRef = useRef(0);
@@ -63,6 +63,14 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
   const [moveBackward, setMoveBackward] = useState(false);
   const [moveLeft, setMoveLeft] = useState(false);
   const [moveRight, setMoveRight] = useState(false);
+  const isPausedRef = useRef(isPaused);
+  isPausedRef.current = isPaused;
+  const isPointerLockedRef = useRef(isPointerLocked);
+  isPointerLockedRef.current = isPointerLocked;
+  const movementInputRef = useRef({ moveForward, moveBackward, moveLeft, moveRight });
+  movementInputRef.current = { moveForward, moveBackward, moveLeft, moveRight };
+  const onReturnToMenuRef = useRef(onReturnToMenu);
+  onReturnToMenuRef.current = onReturnToMenu;
 
   // Engine references
   const gameRef = useRef<{
@@ -157,32 +165,44 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     }
 
     // 2. Normal waste collection into inventory
-    if (inventory.length >= 6) {
+    if (inventoryRef.current.length >= 6) {
       showNotification('¡Inventario lleno! Ve a un contenedor de reciclaje en la acera ♻️', 'text-amber-400');
       return;
     }
 
     soundManager.playCollectTrash();
     triggerArmSwing();
-    setInventory((prev) => [...prev, trashItem]);
+    const updatedInventory = [...inventoryRef.current, trashItem];
+    inventoryRef.current = updatedInventory;
+    setInventory(updatedInventory);
     showNotification(`¡Recogiste ${trashItem.name}! (${trashItem.categoryName}) +${trashItem.points} pts`, 'text-yellow-300');
-  }, [inventory.length, triggerArmSwing, showNotification, level, score, onLevelComplete]);
+  }, [triggerArmSwing, showNotification, level, score, onLevelComplete]);
 
-  const handleDepositTrash = useCallback(() => {
-    if (inventory.length === 0) {
+  const handleDepositTrash = useCallback((binType: TrashItem['binType']) => {
+    const carriedItems = inventoryRef.current;
+    if (carriedItems.length === 0) {
       showNotification('¡Primero recoge basura del suelo con [E] o Clic!', 'text-amber-400');
       return;
     }
 
+    const depositedItems = carriedItems.filter((item) => item.binType === binType);
+    if (depositedItems.length === 0) {
+      const binName = binType === 'green' ? 'orgánicos' : binType === 'hazard' ? 'RESPEL' : binType === 'yellow' ? 'vidrio' : 'aprovechables';
+      showNotification(`Este punto recibe ${binName}. Conserva los demás residuos en tu mochila.`, 'text-amber-400');
+      return;
+    }
+
+    const remainingItems = carriedItems.filter((item) => item.binType !== binType);
+    inventoryRef.current = remainingItems;
+    setInventory(remainingItems);
     soundManager.playRecycleSuccess();
     triggerArmSwing();
 
-    const count = inventory.length;
-    const gainedPoints = inventory.reduce((sum, item) => sum + item.points, 0);
+    const count = depositedItems.length;
+    const gainedPoints = depositedItems.reduce((sum, item) => sum + item.points, 0);
     const newTotalRecycled = recycledCount + count;
     setRecycledCount(newTotalRecycled);
     setScore((prev) => prev + gainedPoints);
-    setInventory([]);
 
     // Progressive oxygen / air restoration based on level difficulty
     const restorePerItem = level.number === 1 ? 28 : level.number === 2 ? 22 : level.number === 3 ? 18 : level.number === 4 ? 15 : 12;
@@ -223,9 +243,9 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         onLevelComplete(score + gainedPoints, level.number);
       }, 1000);
     } else {
-      showNotification(`¡Reciclaje Exitoso! +${gainedPoints} Pts | Aire Purificado 🌱 (${newTotalRecycled}/${level.targetTrash})`, 'text-emerald-400');
+      showNotification(`¡${count} residuo(s) clasificado(s)! +${gainedPoints} pts | ${newTotalRecycled}/${level.targetTrash}`, 'text-emerald-400');
     }
-  }, [inventory, recycledCount, score, level, onLevelComplete, triggerArmSwing, showNotification]);
+  }, [recycledCount, score, level, onLevelComplete, triggerArmSwing, showNotification]);
 
   // Spawn 3D sparkle bursts and ground cleaning ripple exactly where trash was collected
   const spawnPickupParticles = useCallback((pos: THREE.Vector3, colorHex: number = 0x34d399) => {
@@ -287,14 +307,19 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     const { camera, trashObjects, greenBins, blueBins, yellowBins, hazardBins } = state;
     const playerPos = camera.position;
 
-    // Check distance to ANY recycling bin in any of the 4 neighborhoods
-    const isNearGreen = greenBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
-    const isNearBlue = blueBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
-    const isNearYellow = yellowBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
-    const isNearHazard = hazardBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
+    const nearbyBins: { type: TrashItem['binType']; mesh: THREE.Object3D }[] = [
+      ...greenBins.map((mesh) => ({ type: 'green' as const, mesh })),
+      ...blueBins.map((mesh) => ({ type: 'blue' as const, mesh })),
+      ...yellowBins.map((mesh) => ({ type: 'yellow' as const, mesh })),
+      ...hazardBins.map((mesh) => ({ type: 'hazard' as const, mesh })),
+    ];
+    const nearestBin = nearbyBins
+      .map((bin) => ({ ...bin, distance: playerPos.distanceTo(bin.mesh.position) }))
+      .filter((bin) => bin.distance < 5.2)
+      .sort((a, b) => a.distance - b.distance)[0];
 
-    if (isNearGreen || isNearBlue || isNearYellow || isNearHazard) {
-      handleDepositTrash();
+    if (nearestBin) {
+      handleDepositTrash(nearestBin.type);
       return;
     }
 
@@ -520,61 +545,57 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       scene.add(bossGroup);
     }
 
-    // 8. GENERACIÓN PROGRESIVA DE ELEMENTOS REALES POR BARRIO
-    // "mientras avanza de barrio hayan mas basuras"
-    // Barrio 1 (Residencial): 5 basuras
-    // Barrio 2 (Comercial): 8 basuras (más basuras)
-    // Barrio 3 (Industrial): 11 basuras (aún más basuras)
-    // Barrio 4 (Parque Botánico): 14 basuras (la mayor cantidad)
+    // Generate only this mission's required waste in its assigned neighborhood.
     const trashMeshes: { mesh: THREE.Object3D; item: TrashItem }[] = [];
 
     const districtConfigs: {
       districtId: 'residencial' | 'comercial' | 'industrial' | 'parque';
-      count: number;
       zMax: number;
       zMin: number;
-      prefLevels: number[];
     }[] = [
       {
         districtId: 'residencial',
-        count: 5,
         zMax: 15,
         zMin: 3.8,
-        prefLevels: [1, 2],
       },
       {
         districtId: 'comercial',
-        count: 8,
         zMax: 0.2,
         zMin: -36.2,
-        prefLevels: [1, 2, 3],
       },
       {
         districtId: 'industrial',
-        count: 11,
         zMax: -39.8,
         zMin: -73.2,
-        prefLevels: [3, 4],
       },
       {
         districtId: 'parque',
-        count: 14,
         zMax: -76.8,
         zMin: -105,
-        prefLevels: [2, 3, 5],
       },
     ];
 
-    districtConfigs.forEach((dCfg) => {
-      let filteredTemplates = REALISTIC_TRASH_TEMPLATES.filter((t) =>
-        dCfg.prefLevels.includes(t.levelNumber)
-      );
-      if (filteredTemplates.length === 0) {
-        filteredTemplates = REALISTIC_TRASH_TEMPLATES;
-      }
+    const missionTemplates = REALISTIC_TRASH_TEMPLATES.filter((template) =>
+      level.allowedModelTypes.includes(template.modelType)
+    );
+    if (missionTemplates.length === 0) {
+      throw new Error(`La misión "${level.name}" no tiene residuos configurados.`);
+    }
+    if (!districtConfigs.some((district) => district.districtId === level.missionDistrictId)) {
+      throw new Error(`La misión "${level.name}" apunta a un sector que no existe.`);
+    }
 
-      for (let i = 0; i < dCfg.count; i++) {
-        const template = filteredTemplates[i % filteredTemplates.length];
+    const districtCounts = districtConfigs.map((district) =>
+      district.districtId === level.missionDistrictId ? level.targetTrash : 0
+    );
+
+    let missionItemIndex = 0;
+    districtConfigs.forEach((dCfg, districtIndex) => {
+      const count = districtCounts[districtIndex];
+
+      for (let i = 0; i < count; i++) {
+        const template = missionTemplates[missionItemIndex % missionTemplates.length];
+        missionItemIndex += 1;
 
         // Lane distribution: Left sidewalk, Center road, Right sidewalk
         const lane = i % 3;
@@ -583,7 +604,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         else if (lane === 1) x = Math.cos(i * 1.2) * 2.5;
         else x = 4.5 + Math.sin(i * 2.1) * 1.2;
 
-        const progress = (i + 0.5) / dCfg.count;
+        const progress = (i + 0.5) / count;
         const z = dCfg.zMax - progress * (dCfg.zMax - dCfg.zMin) + (Math.sin(i * 2.5) * 0.9);
 
         const trashItem: TrashItem = {
@@ -614,6 +635,21 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         mesh.castShadow = true;
         scene.add(mesh);
         trashMeshes.push({ mesh, item: trashItem });
+      }
+    });
+    const initialDistrictTrashLeft = {
+      residencial: 0,
+      comercial: 0,
+      industrial: 0,
+      parque: 0,
+    };
+    trashMeshes.forEach(({ item }) => {
+      if (item.districtId) initialDistrictTrashLeft[item.districtId] += 1;
+    });
+    setDistrictTrashLeft(initialDistrictTrashLeft);
+    streetResult.barriers.forEach((barrier) => {
+      if (initialDistrictTrashLeft[barrier.sourceDistrictId] === 0) {
+        barrier.setUnlocked(true);
       }
     });
 
@@ -662,7 +698,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     };
 
     const handleCanvasClick = () => {
-      if (!isPointerLocked) {
+      if (!isPointerLockedRef.current) {
         container.requestPointerLock?.();
       } else {
         handleInteractionRef.current();
@@ -670,11 +706,13 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     };
 
     const handlePointerLockChange = () => {
-      setIsPointerLocked(document.pointerLockElement === container);
+      const pointerLocked = document.pointerLockElement === container;
+      isPointerLockedRef.current = pointerLocked;
+      setIsPointerLocked(pointerLocked);
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isPointerLocked || !gameRef.current || isPaused) return;
+      if (!isPointerLockedRef.current || !gameRef.current || isPausedRef.current) return;
       const sensitivity = 0.0022;
       gameRef.current.yaw -= e.movementX * sensitivity;
       gameRef.current.pitch -= e.movementY * sensitivity;
@@ -708,7 +746,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       lastTime = currentTime;
 
       const state = gameRef.current;
-      if (state && !isPaused && !state.isFinished) {
+      if (state && !isPausedRef.current && !state.isFinished) {
         // Player Rotation
         const euler = new THREE.Euler(0, 0, 0, 'YXZ');
         euler.x = state.pitch;
@@ -719,10 +757,11 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         const baseSpeed = character.speed;
         const moveVec = new THREE.Vector3();
 
-        const fwd = state.keys['KeyW'] || state.keys['ArrowUp'] || moveForward;
-        const back = state.keys['KeyS'] || state.keys['ArrowDown'] || moveBackward;
-        const left = state.keys['KeyA'] || state.keys['ArrowLeft'] || moveLeft;
-        const right = state.keys['KeyD'] || state.keys['ArrowRight'] || moveRight;
+        const movementInput = movementInputRef.current;
+        const fwd = state.keys['KeyW'] || state.keys['ArrowUp'] || movementInput.moveForward;
+        const back = state.keys['KeyS'] || state.keys['ArrowDown'] || movementInput.moveBackward;
+        const left = state.keys['KeyA'] || state.keys['ArrowLeft'] || movementInput.moveLeft;
+        const right = state.keys['KeyD'] || state.keys['ArrowRight'] || movementInput.moveRight;
 
         if (fwd) moveVec.z -= 1;
         if (back) moveVec.z += 1;
@@ -740,26 +779,26 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           state.camera.position.x = Math.max(-9.5, Math.min(9.5, state.camera.position.x));
           state.camera.position.z = Math.max(-105, Math.min(18, state.camera.position.z));
 
-          // Eco-Checkpoint Barriers enforcement: Cannot advance to next neighborhood until all trash in current is collected
-          // 1. Barrio Las Flores -> Distrito Comercial Central (Z Boundary = 2.0)
+          // Keep the clean-up route sequential: clear each sector before advancing.
+          // 1. Centro de San Antonio -> Corredor comercial (Z Boundary = 2.0)
           const resLeft = state.trashObjects.filter((t) => t.item.districtId === 'residencial').length;
           if (resLeft > 0 && state.camera.position.z <= 2.25) {
             state.camera.position.z = 2.32;
-            triggerGateAlert('Barrio Las Flores', resLeft, 'Distrito Comercial Central');
+            triggerGateAlert('Centro de San Antonio de Prado', resLeft, 'Corredor comercial');
           }
 
-          // 2. Distrito Comercial Central -> Distrito Eco-Industrial (Z Boundary = -38.0)
+          // 2. Corredor comercial -> Zona de talleres (Z Boundary = -38.0)
           const comLeft = state.trashObjects.filter((t) => t.item.districtId === 'comercial').length;
           if (comLeft > 0 && state.camera.position.z <= -37.75) {
             state.camera.position.z = -37.68;
-            triggerGateAlert('Distrito Comercial', comLeft, 'Distrito Eco-Industrial');
+            triggerGateAlert('Corredor comercial', comLeft, 'Zona de talleres y servicios');
           }
 
-          // 3. Distrito Eco-Industrial -> Gran Parque Botánico (Z Boundary = -75.0)
+          // 3. Zona de talleres -> Sendero de la quebrada (Z Boundary = -75.0)
           const indLeft = state.trashObjects.filter((t) => t.item.districtId === 'industrial').length;
           if (indLeft > 0 && state.camera.position.z <= -74.75) {
             state.camera.position.z = -74.68;
-            triggerGateAlert('Distrito Eco-Industrial', indLeft, 'Gran Parque Botánico');
+            triggerGateAlert('Zona de talleres y servicios', indLeft, 'Sendero de la quebrada');
           }
 
           // Footsteps
@@ -832,32 +871,40 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         if (smogDecayTimer > 1.0) {
           smogDecayTimer = 0;
           const uncollectedCount = state.trashObjects.filter((t) => t.mesh.visible).length;
-          const decay = uncollectedCount * level.smogRate * 0.7;
+          const decay = uncollectedCount * level.smogRate * 0.1;
 
           setAirQuality((prev) => {
             const next = Math.max(0, prev - decay);
             if (next <= 0 && !state.isFinished) {
               state.isFinished = true;
               alert('💨 ¡El aire se volvió totalmente irrespirable! La ciudad cayó bajo el smog tóxico de Mr.Basura.');
-              onReturnToMenu();
+              onReturnToMenuRef.current();
               return 0;
             }
             return next;
           });
         }
 
-        // Proximity detection for HUD prompts (across all 4 recycling streams in all neighborhoods)
+        // Proximity detection for the nearest classified collection point.
         const playerPos = state.camera.position;
-        const isNearGreen = state.greenBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
-        const isNearBlue = state.blueBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
-        const isNearYellow = state.yellowBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
-        const isNearHazard = state.hazardBins.some((b) => playerPos.distanceTo(b.position) < 5.2);
+        const collectionPoints: { type: TrashItem['binType']; name: string; meshes: THREE.Object3D[] }[] = [
+          { type: 'green', name: 'orgánicos', meshes: state.greenBins },
+          { type: 'blue', name: 'aprovechables', meshes: state.blueBins },
+          { type: 'yellow', name: 'vidrio', meshes: state.yellowBins },
+          { type: 'hazard', name: 'RESPEL', meshes: state.hazardBins },
+        ];
+        const nearestPoint = collectionPoints
+          .flatMap((point) => point.meshes.map((mesh) => ({ type: point.type, name: point.name, mesh })))
+          .map((point) => ({ ...point, distance: playerPos.distanceTo(point.mesh.position) }))
+          .filter((point) => point.distance < 5.2)
+          .sort((a, b) => a.distance - b.distance)[0];
 
-        if (isNearGreen || isNearBlue || isNearYellow || isNearHazard) {
+        if (nearestPoint) {
+          const matchingCount = inventoryRef.current.filter((item) => item.binType === nearestPoint.type).length;
           setActivePrompt(
-            level.bossMode
-              ? '⚡ Presiona [E] o Toca para Disparar Rayo Purificador a Mr.Basura'
-              : '♻️ Presiona [E] o Toca para Depositar Residuos en los Contenedores'
+            matchingCount > 0
+              ? `Presiona [E] para depositar ${matchingCount} residuo(s) ${nearestPoint.name}`
+              : `Punto ${nearestPoint.name}: no llevas residuos de esta categoría`
           );
         } else {
           let foundNearbyTrash: string | null = null;
@@ -923,7 +970,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [fov, quality, isPaused, isPointerLocked, moveForward, moveBackward, moveLeft, moveRight, character, level, handleInteraction, onReturnToMenu]);
+  }, [fov, quality, character, level, triggerGateAlert, showNotification]);
 
   return (
     <div className="relative w-full h-screen overflow-hidden select-none font-['Pixelify_Sans',sans-serif]">
@@ -1056,6 +1103,19 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           >
             <Pause className="w-5 h-5" />
           </button>
+        </div>
+      </div>
+
+      {/* Active mission and measurable progress */}
+      <div className="absolute top-24 left-3 z-30 max-w-[min(28rem,calc(100vw-1.5rem))] rounded-xl border border-white/20 bg-slate-950/85 px-3 py-2 text-white shadow-lg pointer-events-none">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+          Misión · {level.name}
+        </div>
+        <p className="mt-0.5 text-xs leading-snug text-slate-100">{level.objective}</p>
+        <div className="mt-1 text-[10px] font-mono text-amber-200">
+          {level.bossMode
+            ? `Purificación de Mr.Basura: ${100 - bossHp}%`
+            : `Residuos entregados: ${recycledCount}/${level.targetTrash}`}
         </div>
       </div>
 

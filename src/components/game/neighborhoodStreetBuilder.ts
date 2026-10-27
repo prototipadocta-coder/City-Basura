@@ -14,54 +14,63 @@ export interface DistrictInfo {
   description: string;
 }
 
+// Mark a pedestrian crossing at the residential-school entrance.
+const crossingMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+for (let x = -5.2; x <= 5.2; x += 1.45) {
+  const stripe = new THREE.Mesh(new THREE.PlaneGeometry(0.82, 2.8), crossingMat);
+  stripe.rotation.x = -Math.PI / 2;
+  stripe.position.set(x, 0.025, 11);
+  scene.add(stripe);
+}
+
 export const DISTRICTS: DistrictInfo[] = [
   {
     id: 'residencial',
-    name: 'Barrio Las Flores',
-    subtitle: 'Zona Residencial Tradicional',
+    name: 'Centro de San Antonio de Prado',
+    subtitle: 'Casas, escuela y tiendas de barrio',
     icon: '🏡',
     zStart: 25,
     zEnd: 2,
     themeColor: '#f59e0b',
     badgeClass: 'bg-amber-600 text-amber-100 border-amber-400',
     ambientColor: 0xffedd5,
-    description: 'Casas coloniales coloridas, techos de tejas rojas, balcones con flores y aceras tranquilas.',
+    description: 'Cuadras residenciales de ladrillo, fachadas de colores, pequeños comercios y andenes concurridos.',
   },
   {
     id: 'comercial',
-    name: 'Distrito Comercial Central',
-    subtitle: 'Tiendas, Cafés y Paseo Peatonal',
+    name: 'Corredor comercial',
+    subtitle: 'Tiendas, paraderos y movilidad local',
     icon: '🛍️',
     zStart: 2,
     zEnd: -38,
     themeColor: '#3b82f6',
     badgeClass: 'bg-blue-600 text-blue-100 border-blue-400',
     ambientColor: 0xe0f2fe,
-    description: 'Escaparates luminosos, toldos de colores, terrazas con sombrillas y estaciones de reciclaje.',
+    description: 'Comercio local, paraderos y flujo de peatones junto a una vía de tráfico mixto.',
   },
   {
     id: 'industrial',
-    name: 'Distrito Eco-Industrial',
-    subtitle: 'Tecnología Limpia y Silos de Reciclaje',
+    name: 'Zona de talleres y servicios',
+    subtitle: 'Punto de recepción de residuos especiales',
     icon: '⚙️',
     zStart: -38,
     zEnd: -75,
     themeColor: '#10b981',
     badgeClass: 'bg-emerald-600 text-emerald-100 border-emerald-400',
     ambientColor: 0xccfbf1,
-    description: 'Paneles solares, silos de reciclaje, naves de ladrillo visto y franjas de bioseguridad.',
+    description: 'Talleres y bodegas con un punto señalizado para entregar pilas, luminarias y aceites usados.',
   },
   {
     id: 'parque',
-    name: 'Gran Parque Botánico',
-    subtitle: 'Reserva Ecológica y Plaza Central',
+    name: 'Sendero de la quebrada',
+    subtitle: 'Zona verde inspirada en Doña María',
     icon: '🌳',
     zStart: -75,
     zEnd: -120,
     themeColor: '#22c55e',
     badgeClass: 'bg-green-600 text-green-100 border-green-400',
     ambientColor: 0xdcfce7,
-    description: 'Pérgolas florales, árboles frondosos, fuentes de piedra y la gran plaza ecológica.',
+    description: 'Vegetación de ladera y senderos vecinales inspirados en el entorno natural del corregimiento.',
   },
 ];
 
@@ -201,22 +210,22 @@ export function buildNeighborhoodStreet(
       const group = new THREE.Group();
       group.position.set(xBase, 0.2, zOffset);
 
-      let colorHex = 0x15803d; // Green default
+      let colorHex = 0x15803d;
       let lidColorHex = 0x166534;
-      let label = 'ORGÁNICO';
+      let label = 'ORGÁNICOS';
 
       if (t === 'blue') {
-        colorHex = 0x1d4ed8;
-        lidColorHex = 0x1e3a8a;
-        label = 'ENVASES';
+        colorHex = 0xf8fafc;
+        lidColorHex = 0xe2e8f0;
+        label = 'APROVECHABLES';
       } else if (t === 'yellow') {
-        colorHex = 0xd97706;
-        lidColorHex = 0x92400e;
-        label = 'VIDRIO';
+        colorHex = 0xf8fafc;
+        lidColorHex = 0xcbd5e1;
+        label = 'VIDRIO LIMPIO';
       } else if (t === 'hazard') {
         colorHex = 0xdc2626;
         lidColorHex = 0x7f1d1d;
-        label = 'PELIGROSOS';
+        label = 'PUNTO RESPEL';
       }
 
       const bodyMat = new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.5 });
@@ -230,8 +239,22 @@ export function buildNeighborhoodStreet(
       lid.position.y = 2.05;
       group.add(lid);
 
-      // Emblem text on side
-      const signMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const signCanvas = document.createElement('canvas');
+      signCanvas.width = 512;
+      signCanvas.height = 128;
+      const signContext = signCanvas.getContext('2d');
+      if (!signContext) {
+        throw new Error('No fue posible crear el rótulo del punto de reciclaje.');
+      }
+      signContext.fillStyle = colorHex === 0xf8fafc ? '#ffffff' : `#${colorHex.toString(16).padStart(6, '0')}`;
+      signContext.fillRect(0, 0, signCanvas.width, signCanvas.height);
+      signContext.fillStyle = colorHex === 0xf8fafc ? '#0f172a' : '#ffffff';
+      signContext.font = 'bold 34px sans-serif';
+      signContext.textAlign = 'center';
+      signContext.textBaseline = 'middle';
+      signContext.fillText(label, signCanvas.width / 2, signCanvas.height / 2, signCanvas.width - 24);
+      const signTexture = new THREE.CanvasTexture(signCanvas);
+      const signMat = new THREE.MeshBasicMaterial({ map: signTexture });
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.4), signMat);
       sign.position.set(side === 'left' ? 1.06 : -1.06, 1.2, 0);
       sign.rotation.y = side === 'left' ? Math.PI / 2 : -Math.PI / 2;
@@ -239,10 +262,10 @@ export function buildNeighborhoodStreet(
 
       scene.add(group);
 
-      if (t === 'green') greenBins.push(body);
-      else if (t === 'blue') blueBins.push(body);
-      else if (t === 'yellow') yellowBins.push(body);
-      else if (t === 'hazard') hazardBins.push(body);
+      if (t === 'green') greenBins.push(group);
+      else if (t === 'blue') blueBins.push(group);
+      else if (t === 'yellow') yellowBins.push(group);
+      else if (t === 'hazard') hazardBins.push(group);
     });
   };
 
@@ -318,12 +341,19 @@ export function buildNeighborhoodStreet(
   };
 
   // ==========================================================================
-  // SECTOR 1: BARRIO RESIDENCIAL "LAS FLORES" (Z = 24 to 2)
-  // Casas coloniales coloridas, techos de tejas, balcones y cercas
+  // SECTOR 1: CENTRO Y CUADRA RESIDENCIAL (Z = 24 to 2)
+  // Casas de ladrillo, fachadas de colores, puertas, ventanas y antejardines.
   // ==========================================================================
-  addDistrictArch(18, '🏡 BARRIO LAS FLORES', 'ZONA RESIDENCIAL Y ESCOLAR', 0xd97706, 0x92400e);
+  addDistrictArch(18, '🏡 CENTRO DE SAN ANTONIO', 'CASAS, ESCUELA Y TIENDAS DE BARRIO', 0xd97706, 0x92400e);
 
-  const resHouseColors = [0xe11d48, 0x2563eb, 0x059669, 0xd97706, 0x7c3aed];
+  const resHouseColors = [0xd98b75, 0xe7c27d, 0xb86f55, 0xd9d3b8, 0xc98e78];
+  const residentialWindowFrameMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.6 });
+  const residentialGlassMat = new THREE.MeshStandardMaterial({
+    color: 0x93c5d3,
+    roughness: 0.2,
+    metalness: 0.25,
+  });
+  const residentialDoorMat = new THREE.MeshStandardMaterial({ color: 0x5b4636, roughness: 0.8 });
   for (let z = 16; z >= 4; z -= 7.5) {
     [-16, 16].forEach((xSide, idx) => {
       const houseMat = new THREE.MeshStandardMaterial({
@@ -334,6 +364,25 @@ export function buildNeighborhoodStreet(
       house.position.set(xSide, 3.5, z);
       house.castShadow = isHighQuality;
       scene.add(house);
+
+      const facadeX = xSide + (xSide > 0 ? -3.56 : 3.56);
+      [-1.65, 1.65].forEach((windowOffset) => {
+        const windowFrame = new THREE.Mesh(
+          new THREE.BoxGeometry(0.14, 1.45, 1.3),
+          residentialWindowFrameMat
+        );
+        windowFrame.position.set(facadeX, 4.7, z + windowOffset);
+        scene.add(windowFrame);
+        const windowGlass = new THREE.Mesh(
+          new THREE.BoxGeometry(0.16, 1.15, 1.0),
+          residentialGlassMat
+        );
+        windowGlass.position.set(facadeX + (xSide > 0 ? -0.02 : 0.02), 4.7, z + windowOffset);
+        scene.add(windowGlass);
+      });
+      const frontDoor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 2.2, 1.15), residentialDoorMat);
+      frontDoor.position.set(facadeX, 1.35, z);
+      scene.add(frontDoor);
 
       // Terracotta roof
       const roofMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.8 });
@@ -368,10 +417,10 @@ export function buildNeighborhoodStreet(
   addRecyclingStation(6, ['green', 'blue'], 'left');
 
   // ==========================================================================
-  // SECTOR 2: DISTRITO COMERCIAL CENTRAL (Z = 2 to -38)
-  // Edificios altos con escaparates, toldos rayados de tiendas, mesas de café
+  // SECTOR 2: CORREDOR COMERCIAL (Z = 2 to -38)
+  // Comercio local, vitrinas, toldos y espacios de espera.
   // ==========================================================================
-  addDistrictArch(1, '🛍️ DISTRITO COMERCIAL CENTRAL', 'TIENDAS, CAFÉS & PASEO PEATONAL', 0x1d4ed8, 0x1e3a8a);
+  addDistrictArch(1, '🛍️ CORREDOR COMERCIAL', 'TIENDAS, PARADEROS Y MOVILIDAD LOCAL', 0x1d4ed8, 0x1e3a8a);
 
   const awningColors = [0xef4444, 0x3b82f6, 0x10b981, 0xf59e0b, 0x8b5cf6];
   for (let z = -2; z >= -36; z -= 8) {
@@ -430,10 +479,10 @@ export function buildNeighborhoodStreet(
   addRecyclingStation(-18, ['blue', 'yellow'], 'right');
 
   // ==========================================================================
-  // SECTOR 3: DISTRITO ECO-INDUSTRIAL & TECNOLÓGICO (Z = -38 to -75)
-  // Naves de ladrillo visto, paneles solares, silos de reciclaje, franjas caution
+  // SECTOR 3: ZONA DE TALLERES Y SERVICIOS (Z = -38 to -75)
+  // Talleres, bodegas y punto de recepción de residuos especiales.
   // ==========================================================================
-  addDistrictArch(-39, '⚙️ DISTRITO ECO-INDUSTRIAL', 'ENERGÍAS LIMPIAS & SILOS DE RECICLAJE', 0x059669, 0x064e3b);
+  addDistrictArch(-39, '🔧 ZONA DE TALLERES', 'PUNTO DE RECEPCIÓN RESPEL', 0x059669, 0x064e3b);
 
   for (let z = -42; z >= -72; z -= 8.5) {
     [-17, 17].forEach((xSide) => {
@@ -487,10 +536,10 @@ export function buildNeighborhoodStreet(
   addRecyclingStation(-56, ['yellow', 'hazard', 'blue'], 'left');
 
   // ==========================================================================
-  // SECTOR 4: GRAN PARQUE BOTÁNICO & RESERVA ECOLÓGICA (Z = -75 to -120)
-  // Pérgolas de madera, cerezos rosados, jacarandás, fuente de piedra
+  // SECTOR 4: SENDERO DE LA QUEBRADA (Z = -75 to -120)
+  // Vegetación de ladera y senderos vecinales.
   // ==========================================================================
-  addDistrictArch(-76, '🌳 GRAN PARQUE BOTÁNICO', 'RESERVA ECOLÓGICA & PLAZA CENTRAL', 0x15803d, 0x166534);
+  addDistrictArch(-76, '🌳 SENDERO DE LA QUEBRADA', 'ZONA VERDE INSPIRADA EN DOÑA MARÍA', 0x15803d, 0x166534);
 
   // Diverse tree canopy (Verdes, Cerezos rosados, Jacarandás violetas)
   const parkTreeColors = [0x16a34a, 0xf472b6, 0xa855f7, 0x15803d, 0xec4899];
@@ -684,9 +733,9 @@ export function buildNeighborhoodStreet(
   };
 
   // Add the 3 checkpoints at the exact borders between neighborhoods
-  addDistrictBarrier('barrier_residencial_to_comercial', 'residencial', 'Distrito Comercial Central', 2.0, 'Barrio Las Flores');
-  addDistrictBarrier('barrier_comercial_to_industrial', 'comercial', 'Distrito Eco-Industrial', -38.0, 'Distrito Comercial');
-  addDistrictBarrier('barrier_industrial_to_parque', 'industrial', 'Gran Parque Botánico', -75.0, 'Distrito Eco-Industrial');
+  addDistrictBarrier('barrier_residencial_to_comercial', 'residencial', 'Corredor comercial', 2.0, 'Centro de San Antonio de Prado');
+  addDistrictBarrier('barrier_comercial_to_industrial', 'comercial', 'Zona de talleres y servicios', -38.0, 'Corredor comercial');
+  addDistrictBarrier('barrier_industrial_to_parque', 'industrial', 'Sendero de la quebrada', -75.0, 'Zona de talleres y servicios');
 
   return {
     greenBins,

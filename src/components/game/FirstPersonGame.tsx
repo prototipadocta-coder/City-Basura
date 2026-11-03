@@ -40,6 +40,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
   const [isPointerLocked, setIsPointerLocked] = useState(false);
   const [inventory, setInventory] = useState<TrashItem[]>([]);
   const [recycledCount, setRecycledCount] = useState(0);
+  const [collectedTrashCount, setCollectedTrashCount] = useState(0);
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(level.timeLimit);
   const [airQuality, setAirQuality] = useState(100); // 0 to 100%
@@ -233,7 +234,15 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     const updatedInventory = [...inventoryRef.current, trashItem];
     inventoryRef.current = updatedInventory;
     setInventory(updatedInventory);
-    showNotification(`¡Recogiste ${trashItem.name}! (${trashItem.categoryName}) +${trashItem.points} pts`, 'text-yellow-300');
+    setCollectedTrashCount((prev) => {
+      const next = prev + 1;
+      if (next >= level.targetTrash) {
+        showNotification(`🎉 ¡Recogiste todas las basuras (${next}/${level.targetTrash})! Llévalas al contenedor blanco de reciclaje para completar el nivel.`, 'text-emerald-300');
+      } else {
+        showNotification(`¡Recogiste ${trashItem.name}! (${next}/${level.targetTrash}) +${trashItem.points} pts`, 'text-yellow-300');
+      }
+      return next;
+    });
   }, [triggerArmSwing, showNotification, level, score, onLevelComplete]);
 
   const handleDepositTrash = useCallback((binType: TrashItem['binType']) => {
@@ -243,14 +252,18 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       return;
     }
 
-    const depositedItems = carriedItems.filter((item) => item.binType === binType);
+    let depositedItems = carriedItems.filter((item) => item.binType === binType);
+    if (level.number === 1 && depositedItems.length === 0 && carriedItems.some((item) => item.binType === 'blue')) {
+      // In Mundo 1 (Tutorial), any bin in the residential recycling station accepts recyclable items seamlessly
+      depositedItems = carriedItems.filter((item) => item.binType === 'blue');
+    }
     if (depositedItems.length === 0) {
       const binName = binType === 'green' ? 'orgánicos' : binType === 'hazard' ? 'RESPEL' : binType === 'yellow' ? 'vidrio' : 'aprovechables';
       showNotification(`Este punto recibe ${binName}. Conserva los demás residuos en tu mochila.`, 'text-amber-400');
       return;
     }
 
-    const remainingItems = carriedItems.filter((item) => item.binType !== binType);
+    const remainingItems = carriedItems.filter((item) => !depositedItems.includes(item));
     inventoryRef.current = remainingItems;
     setInventory(remainingItems);
     soundManager.playRecycleSuccess();
@@ -367,40 +380,40 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
 
     // 1. FIRST PRIORITY: Always check for nearby ground waste to collect first!
     let nearestIndex = -1;
-    let minDist = 4.2;
+    let minDist = 4.5;
 
     const forward = new THREE.Vector3();
     camera.getWorldDirection(forward);
 
     trashObjects.forEach((obj, idx) => {
       if (obj.mesh.visible) {
-        const d = playerPos.distanceTo(obj.mesh.position);
-        if (d < minDist) {
+        const dXZ = Math.hypot(playerPos.x - obj.mesh.position.x, playerPos.z - obj.mesh.position.z);
+        if (dXZ < minDist) {
           if (cameraViewRef.current === 'first') {
-            const toObj = obj.mesh.position.clone().sub(playerPos).normalize();
-            const dot = forward.dot(toObj);
-            // In 1st person, pick up if facing towards it or in close proximity
-            if (dot > 0.1 || d < 2.5) {
-              minDist = d;
+            const toTrash = obj.mesh.position.clone().sub(camera.position).normalize();
+            const dot = forward.dot(toTrash);
+            // In 1st person, pick up if facing towards it or in close proximity (< 3.8m)
+            if (dot > -0.3 || dXZ < 3.8) {
+              minDist = dXZ;
               nearestIndex = idx;
             }
           } else {
             // In 2nd/3rd person, check proximity directly
-            minDist = d;
+            minDist = dXZ;
             nearestIndex = idx;
           }
         }
       }
     });
 
-    // Fallback: any closest visible trash in proximity (< 3.8m)
+    // Fallback: any closest visible trash in proximity (< 4.2m)
     if (nearestIndex === -1) {
-      let closeDist = 3.8;
+      let closeDist = 4.2;
       trashObjects.forEach((obj, idx) => {
         if (obj.mesh.visible) {
-          const d = playerPos.distanceTo(obj.mesh.position);
-          if (d < closeDist) {
-            closeDist = d;
+          const dXZ = Math.hypot(playerPos.x - obj.mesh.position.x, playerPos.z - obj.mesh.position.z);
+          if (dXZ < closeDist) {
+            closeDist = dXZ;
             nearestIndex = idx;
           }
         }
@@ -463,7 +476,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       return;
     }
 
-    // 2. SECOND PRIORITY: Check for nearby recycling bins on the sidewalk (within 2.8m)
+    // 2. SECOND PRIORITY: Check for nearby recycling bins on the sidewalk (within 3.8m)
     const nearbyBins: { type: TrashItem['binType']; mesh: THREE.Object3D }[] = [
       ...greenBins.map((mesh) => ({ type: 'green' as const, mesh })),
       ...blueBins.map((mesh) => ({ type: 'blue' as const, mesh })),
@@ -471,8 +484,8 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       ...hazardBins.map((mesh) => ({ type: 'hazard' as const, mesh })),
     ];
     const nearestBin = nearbyBins
-      .map((bin) => ({ ...bin, distance: playerPos.distanceTo(bin.mesh.position) }))
-      .filter((bin) => bin.distance < 2.8)
+      .map((bin) => ({ ...bin, distance: Math.hypot(playerPos.x - bin.mesh.position.x, playerPos.z - bin.mesh.position.z) }))
+      .filter((bin) => bin.distance < 3.8)
       .sort((a, b) => a.distance - b.distance)[0];
 
     if (nearestBin) {
@@ -656,13 +669,14 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
 
     let missionItemIndex = 0;
     if (level.number === 1) {
-      // 5 clearly spaced, highly visible items on the open road & sidewalk for Level 1 (Ruta escolar)
+      // 5 clearly spaced, balanced, and 100% reachable items in Sector 1 (Centro de San Antonio)
+      // Exactly 5 items placed across the open road and sidewalks, with zero clipping and high visibility
       const level1Placements = [
-        { x: 1.5, y: 0.14, z: 13.0 },  // Front right, school entrance lane
-        { x: -1.6, y: 0.14, z: 11.8 }, // Left road lane
-        { x: 1.8, y: 0.14, z: 10.5 },  // Right road lane
-        { x: -1.6, y: 0.14, z: 9.2 },  // Left road lane
-        { x: 0.2, y: 0.14, z: 8.0 },   // Center street, broad clear sightline, safely away from sidewalk bins at z=4.6 and z=7.4
+        { x: 1.4, y: 0.20, z: 12.8 },  // 1. Frente a la escuela / cruce peatonal (visible de inmediato al empezar)
+        { x: -3.8, y: 0.42, z: 11.2 }, // 2. En la acera izquierda junto a las casas de ladrillo (fácil descubrimiento)
+        { x: 0.0, y: 0.20, z: 9.2 },   // 3. En el centro despejado de la calle escolar
+        { x: 4.2, y: 0.42, z: 7.6 },   // 4. En la acera derecha junto a la jardinera de flores
+        { x: -1.8, y: 0.20, z: 5.8 },  // 5. En el carril izquierdo, a pasos del punto blanco de aprovechables (z=7.4)
       ];
 
       level1Placements.forEach((coord, i) => {
@@ -949,6 +963,13 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           if (resLeft > 0 && state.playerPosition.z <= 2.25) {
             state.playerPosition.z = 2.32;
             triggerGateAlert('Centro de San Antonio de Prado', resLeft, 'Corredor comercial');
+          } else if (level.number === 1 && resLeft === 0 && state.playerPosition.z <= 2.0 && !state.isFinished) {
+            state.isFinished = true;
+            confetti({ particleCount: 90, spread: 80, origin: { y: 0.5 } });
+            showNotification(`🎉 ¡Mundo 1 100% completado! Avanzando al siguiente barrio...`, 'text-emerald-400');
+            setTimeout(() => {
+              onLevelComplete(score + 100, level.number);
+            }, 1000);
           }
 
           // 2. Corredor comercial -> Zona de talleres (Z Boundary = -38.0)
@@ -1046,7 +1067,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           let minD = 999;
           let closestName = '';
           curDistrictTrash.forEach((t) => {
-            const d = state.playerPosition.distanceTo(t.mesh.position);
+            const d = Math.hypot(state.playerPosition.x - t.mesh.position.x, state.playerPosition.z - t.mesh.position.z);
             if (d < minD) {
               minD = d;
               closestName = t.item.name;
@@ -1054,7 +1075,11 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           });
           setNearestTrashHint(`${closestName} (${Math.round(minD)}m)`);
         } else {
-          setNearestTrashHint(null);
+          setNearestTrashHint(
+            inventoryRef.current.length > 0
+              ? '¡Lleva los residuos al contenedor blanco! ♻️'
+              : '¡Zona 100% limpia! ✨'
+          );
         }
 
         // Flag flutter
@@ -1095,8 +1120,21 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           });
         }
 
-        // Proximity detection for the nearest classified collection point.
+        // Proximity detection: PRIORITY 1: Trash Pickup within 4.5m
         const playerPos = state.playerPosition;
+        let foundNearbyTrash: string | null = null;
+        let nearestTrashDist = 4.5;
+        state.trashObjects.forEach((obj) => {
+          if (obj.mesh.visible) {
+            const dXZ = Math.hypot(playerPos.x - obj.mesh.position.x, playerPos.z - obj.mesh.position.z);
+            if (dXZ < nearestTrashDist) {
+              nearestTrashDist = dXZ;
+              foundNearbyTrash = `[ESPACIO / E] Recoger ${obj.item.name} (${obj.item.categoryName || 'Residuo'})`;
+            }
+          }
+        });
+
+        // Proximity detection: PRIORITY 2: Recycling Bins within 3.8m
         const collectionPoints: { type: TrashItem['binType']; name: string; meshes: THREE.Object3D[] }[] = [
           { type: 'green', name: 'orgánicos', meshes: state.greenBins },
           { type: 'blue', name: 'aprovechables', meshes: state.blueBins },
@@ -1105,26 +1143,35 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         ];
         const nearestPoint = collectionPoints
           .flatMap((point) => point.meshes.map((mesh) => ({ type: point.type, name: point.name, mesh })))
-          .map((point) => ({ ...point, distance: playerPos.distanceTo(point.mesh.position) }))
-          .filter((point) => point.distance < 2.8)
+          .map((point) => ({ ...point, distance: Math.hypot(playerPos.x - point.mesh.position.x, playerPos.z - point.mesh.position.z) }))
+          .filter((point) => point.distance < 3.8)
           .sort((a, b) => a.distance - b.distance)[0];
 
-        if (nearestPoint) {
-          const matchingCount = inventoryRef.current.filter((item) => item.binType === nearestPoint.type).length;
+        if (foundNearbyTrash) {
+          setActivePrompt(foundNearbyTrash);
+        } else if (nearestPoint) {
+          const matchingCount = level.number === 1
+            ? inventoryRef.current.length
+            : inventoryRef.current.filter((item) => item.binType === nearestPoint.type).length;
           setActivePrompt(
             matchingCount > 0
               ? `Presiona [ESPACIO / E] para depositar ${matchingCount} residuo(s) ${nearestPoint.name}`
               : `Punto ${nearestPoint.name}: no llevas residuos de esta categoría`
           );
         } else {
-          let foundNearbyTrash: string | null = null;
-          state.trashObjects.forEach((obj) => {
-            if (obj.mesh.visible && playerPos.distanceTo(obj.mesh.position) < 3.8) {
-              foundNearbyTrash = `[ESPACIO / E] Recoger ${obj.item.name} (${obj.item.categoryName || 'Residuo'})`;
-            }
-          });
-          setActivePrompt(foundNearbyTrash);
+          setActivePrompt(null);
         }
+
+        // Animate luminous halos under uncollected trash
+        state.trashObjects.forEach((obj) => {
+          if (obj.mesh.visible) {
+            const halo = obj.mesh.getObjectByName('trash_pickup_halo');
+            if (halo) {
+              const pulse = 1 + Math.sin(currentTime * 0.005 + obj.item.x) * 0.15;
+              halo.scale.set(pulse, pulse, 1);
+            }
+          }
+        });
         // Animate 3D pickup burst particles and cleaning ground rings
         if (state.particles && state.particles.length > 0) {
           for (let pIdx = state.particles.length - 1; pIdx >= 0; pIdx--) {
@@ -1357,11 +1404,22 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           Misión · {level.name}
         </div>
         <p className="mt-0.5 text-xs leading-snug text-slate-100">{level.objective}</p>
-        <div className="mt-1 text-[10px] font-mono text-amber-200">
-          {level.bossMode
-            ? `Purificación de Mr.Basura: ${100 - bossHp}%`
-            : `Residuos entregados: ${recycledCount}/${level.targetTrash}`}
-        </div>
+        {level.bossMode ? (
+          <div className="mt-1 text-[11px] font-mono text-red-300 font-bold">
+            Purificación de Mr.Basura: {100 - bossHp}%
+          </div>
+        ) : (
+          <div className="mt-1.5 flex flex-col gap-0.5 text-[11px] font-mono">
+            <div className="flex items-center justify-between gap-2 text-emerald-300 font-bold">
+              <span>🗑️ Basura recogida:</span>
+              <span>{collectedTrashCount}/{level.targetTrash} {collectedTrashCount >= level.targetTrash ? '✅' : ''}</span>
+            </div>
+            <div className="flex items-center justify-between gap-2 text-amber-200 font-bold">
+              <span>♻️ Entregada en contenedor:</span>
+              <span>{recycledCount}/{level.targetTrash} {recycledCount >= level.targetTrash ? '✅' : ''}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="absolute top-24 right-3 z-30 max-w-48 rounded-lg bg-slate-950/80 px-2 py-1 text-[10px] leading-snug text-slate-200 pointer-events-none md:hidden">

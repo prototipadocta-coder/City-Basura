@@ -127,18 +127,30 @@ export function createRealisticWasteMesh(item: TrashItem): THREE.Group {
     }
 
     case 'crinkled_plastic_cup': {
-      // Crushed translucent white cup
+      // Crushed translucent cup with bright blue eco stripe and red straw
       const cupMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
+        color: 0x67e8f9,
         transparent: true,
-        opacity: 0.75,
-        roughness: 0.3,
+        opacity: 0.85,
+        roughness: 0.2,
       });
-      const cup = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.38, 12), cupMat);
-      cup.position.y = 0.18;
-      cup.scale.set(1.2, 0.6, 0.9); // Crushed
-      group.add(cup);
-      group.rotation.z = Math.PI / 2.3;
+      const cup = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.40, 12), cupMat);
+      cup.position.y = 0.22;
+      cup.scale.set(1.15, 0.7, 0.9); // Crushed
+
+      const rimMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 });
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.03, 8, 16), rimMat);
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.42;
+
+      // Small bendy straw
+      const strawMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+      const straw = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 8), strawMat);
+      straw.position.set(0.06, 0.46, 0.02);
+      straw.rotation.z = -0.3;
+
+      group.add(cup, rim, straw);
+      group.rotation.z = Math.PI / 4;
       break;
     }
 
@@ -638,6 +650,31 @@ export function createRealisticWasteMesh(item: TrashItem): THREE.Group {
       break;
     }
   }
+
+  // Luminous ground beacon ring under every trash item so it is 100% visible and never lost
+  const haloColor =
+    item.binType === 'hazard'
+      ? 0xef4444
+      : item.binType === 'green'
+      ? 0x22c55e
+      : item.binType === 'yellow'
+      ? 0xf59e0b
+      : item.binType === 'instant'
+      ? 0x06b6d4
+      : 0x38bdf8;
+  const halo = new THREE.Mesh(
+    new THREE.RingGeometry(0.26, 0.42, 16),
+    new THREE.MeshBasicMaterial({
+      color: haloColor,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.7,
+    })
+  );
+  halo.name = 'trash_pickup_halo';
+  halo.rotation.x = -Math.PI / 2;
+  halo.position.y = 0.02;
+  group.add(halo);
 
   // Position on street
   group.position.set(item.x, item.y, item.z);

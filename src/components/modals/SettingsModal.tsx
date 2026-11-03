@@ -215,12 +215,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <span className="font-mono text-emerald-400 font-bold">Ratón</span>
               </div>
               <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded border border-slate-700">
-                <span className="text-slate-400">Recoger Basura</span>
-                <span className="font-mono text-emerald-400 font-bold">[E] / [Espacio] / Clic</span>
+                <span className="text-slate-400">Recoger / Depositar</span>
+                <span className="font-mono text-emerald-400 font-bold">[Espacio] / [E] / Clic</span>
               </div>
               <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded border border-slate-700">
+                <span className="text-slate-400">Cambiar Cámara</span>
+                <span className="font-mono text-cyan-400 font-bold">[P] (1ª/2ª/3ª pers.)</span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-900/60 p-2 rounded border border-slate-700 col-span-2">
                 <span className="text-slate-400">Pausar / Menú</span>
-                <span className="font-mono text-emerald-400 font-bold">[ESC] / [P]</span>
+                <span className="font-mono text-amber-400 font-bold">[ESC]</span>
               </div>
             </div>
           </div>

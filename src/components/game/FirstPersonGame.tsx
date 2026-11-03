@@ -5,9 +5,12 @@ import { TrashItem, Character, LevelConfig } from '../../types/game';
 import { REALISTIC_TRASH_TEMPLATES } from '../../data/characters';
 import { createRealisticWasteMesh } from './realisticWasteModels';
 import { createPlayerHandModel, updatePlayerArmAnimation, PlayerHandRig } from './playerHandModel';
+import { createPlayerCharacterModel, updatePlayerCharacterAnimation, PlayerCharacterRig } from './playerCharacterModel';
 import { buildNeighborhoodStreet, getDistrictAtZ, DISTRICTS, DistrictInfo, DistrictBarrier } from './neighborhoodStreetBuilder';
-import { Pause, RotateCcw, Volume2, VolumeX, Eye, Sparkles, Wind, Heart, AlertTriangle, ShieldCheck, MapPin, Lock, Unlock, Compass } from 'lucide-react';
+import { Pause, RotateCcw, Volume2, VolumeX, Eye, Sparkles, Wind, Heart, AlertTriangle, ShieldCheck, MapPin, Lock, Unlock, Compass, Camera } from 'lucide-react';
 import confetti from 'canvas-confetti';
+
+export type CameraViewMode = 'first' | 'second' | 'third';
 
 interface FirstPersonGameProps {
   onReturnToMenu: () => void;
@@ -104,12 +107,42 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     onLostPointerCapture: () => setMoving(false),
   });
 
+  const showNotification = useCallback((text: string, color: string = 'text-emerald-400') => {
+    setNotification({ text, color });
+    setTimeout(() => {
+      setNotification((curr) => (curr?.text === text ? null : curr));
+    }, 2800);
+  }, []);
+
+  // Camera perspective state: 'first' (eyes) -> 'second' (front facing character) -> 'third' (behind character)
+  const [cameraView, setCameraView] = useState<CameraViewMode>('first');
+  const cameraViewRef = useRef<CameraViewMode>('first');
+  cameraViewRef.current = cameraView;
+
+  const cycleCameraView = useCallback(() => {
+    setCameraView((prev) => {
+      const next: CameraViewMode = prev === 'first' ? 'second' : prev === 'second' ? 'third' : 'first';
+      cameraViewRef.current = next;
+      soundManager.playClick();
+      const label =
+        next === 'first'
+          ? '1ª Persona (Ojos del Personaje)'
+          : next === 'second'
+          ? '2ª Persona (Frente al Personaje)'
+          : '3ª Persona (Desde Atrás)';
+      showNotification(`📷 Cámara: ${label}`, 'text-sky-300');
+      return next;
+    });
+  }, [showNotification]);
+
   // Engine references
   const gameRef = useRef<{
     scene: THREE.Scene;
     camera: THREE.PerspectiveCamera;
     renderer: THREE.WebGLRenderer;
+    playerPosition: THREE.Vector3;
     playerRig: PlayerHandRig;
+    characterRig: PlayerCharacterRig;
     trashObjects: { mesh: THREE.Object3D; item: TrashItem }[];
     greenBins: THREE.Object3D[];
     blueBins: THREE.Object3D[];
@@ -157,13 +190,6 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     }, 4000);
   }, []);
 
-  const showNotification = useCallback((text: string, color: string = 'text-emerald-400') => {
-    setNotification({ text, color });
-    setTimeout(() => {
-      setNotification((curr) => (curr?.text === text ? null : curr));
-    }, 2800);
-  }, []);
-
   // Triggers the realistic first-person gloved hand reach & grab animation
   const triggerArmSwing = useCallback(() => {
     if (!gameRef.current) return;
@@ -196,9 +222,9 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       return;
     }
 
-    // 2. Normal waste collection into inventory
-    if (inventoryRef.current.length >= 6) {
-      showNotification('¡Inventario lleno! Ve a un contenedor de reciclaje en la acera ♻️', 'text-amber-400');
+    // 2. Normal waste collection into inventory (16 slots capacity)
+    if (inventoryRef.current.length >= 16) {
+      showNotification('¡Inventario lleno (16/16)! Ve a un contenedor de reciclaje en la acera ♻️', 'text-amber-400');
       return;
     }
 
@@ -213,7 +239,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
   const handleDepositTrash = useCallback((binType: TrashItem['binType']) => {
     const carriedItems = inventoryRef.current;
     if (carriedItems.length === 0) {
-      showNotification('¡Primero recoge basura del suelo con [E] o Clic!', 'text-amber-400');
+      showNotification('¡Primero recoge basura del suelo con [Espacio] o [E]!', 'text-amber-400');
       return;
     }
 
@@ -332,30 +358,14 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     });
   }, []);
 
-  // Handle interaction key E or Click
+  // Handle interaction with SPACE, E or Click
   const handleInteraction = useCallback(() => {
     if (!gameRef.current) return;
     const state = gameRef.current;
     const { camera, trashObjects, greenBins, blueBins, yellowBins, hazardBins } = state;
-    const playerPos = camera.position;
+    const playerPos = state.playerPosition || camera.position;
 
-    const nearbyBins: { type: TrashItem['binType']; mesh: THREE.Object3D }[] = [
-      ...greenBins.map((mesh) => ({ type: 'green' as const, mesh })),
-      ...blueBins.map((mesh) => ({ type: 'blue' as const, mesh })),
-      ...yellowBins.map((mesh) => ({ type: 'yellow' as const, mesh })),
-      ...hazardBins.map((mesh) => ({ type: 'hazard' as const, mesh })),
-    ];
-    const nearestBin = nearbyBins
-      .map((bin) => ({ ...bin, distance: playerPos.distanceTo(bin.mesh.position) }))
-      .filter((bin) => bin.distance < 5.2)
-      .sort((a, b) => a.distance - b.distance)[0];
-
-    if (nearestBin) {
-      handleDepositTrash(nearestBin.type);
-      return;
-    }
-
-    // Check distance & view alignment to nearest trash
+    // 1. FIRST PRIORITY: Always check for nearby ground waste to collect first!
     let nearestIndex = -1;
     let minDist = 4.2;
 
@@ -366,10 +376,16 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       if (obj.mesh.visible) {
         const d = playerPos.distanceTo(obj.mesh.position);
         if (d < minDist) {
-          const toObj = obj.mesh.position.clone().sub(playerPos).normalize();
-          const dot = forward.dot(toObj);
-          // Prioritize what the player is facing or what is very close
-          if (dot > 0.2 || d < 2.4) {
+          if (cameraViewRef.current === 'first') {
+            const toObj = obj.mesh.position.clone().sub(playerPos).normalize();
+            const dot = forward.dot(toObj);
+            // In 1st person, pick up if facing towards it or in close proximity
+            if (dot > 0.1 || d < 2.5) {
+              minDist = d;
+              nearestIndex = idx;
+            }
+          } else {
+            // In 2nd/3rd person, check proximity directly
             minDist = d;
             nearestIndex = idx;
           }
@@ -377,14 +393,14 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       }
     });
 
-    // Fallback: any closest visible trash in proximity
+    // Fallback: any closest visible trash in proximity (< 3.8m)
     if (nearestIndex === -1) {
-      minDist = 3.8;
+      let closeDist = 3.8;
       trashObjects.forEach((obj, idx) => {
         if (obj.mesh.visible) {
           const d = playerPos.distanceTo(obj.mesh.position);
-          if (d < minDist) {
-            minDist = d;
+          if (d < closeDist) {
+            closeDist = d;
             nearestIndex = idx;
           }
         }
@@ -395,8 +411,8 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
       const target = trashObjects[nearestIndex];
 
       // Check backpack capacity FIRST (Instant items bypass inventory)
-      if (target.item.binType !== 'instant' && inventoryRef.current.length >= 6) {
-        showNotification('¡Inventario lleno (6/6)! Lleva los residuos al contenedor de reciclaje ♻️', 'text-amber-400');
+      if (target.item.binType !== 'instant' && inventoryRef.current.length >= 16) {
+        showNotification('¡Inventario lleno (16/16)! Lleva los residuos al contenedor de reciclaje ♻️', 'text-amber-400');
         return;
       }
 
@@ -418,35 +434,52 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
 
       // 4. Update district trash count & unlock barrier if district is completely clean
       if (target.item.districtId) {
-        const dId = target.item.districtId;
         setDistrictTrashLeft((prev) => {
-          const remaining = Math.max(0, (prev[dId] ?? 1) - 1);
-          if (remaining === 0 && gameRef.current) {
-            const barrier = gameRef.current.barriers.find((b) => b.sourceDistrictId === dId);
-            if (barrier && !barrier.isUnlocked) {
-              barrier.setUnlocked(true);
-              confetti({ particleCount: 110, spread: 85, origin: { y: 0.6 } });
-              soundManager.playRecycleSuccess();
-              showNotification(
-                `🎉 ¡BARRIO PURIFICADO! La barrera hacia ${barrier.targetDistrictName} se ha DESBLOQUEADO. ¡Avanza!`,
-                'text-emerald-300'
-              );
-            }
+          const updated = {
+            ...prev,
+            [target.item.districtId!]: Math.max(0, (prev[target.item.districtId!] || 0) - 1),
+          };
+
+          // If current district is now 100% clean, unlock the next barrier!
+          if (updated[target.item.districtId!] === 0) {
+            soundManager.playRecycleSuccess();
+            const clearedName = target.item.districtId === 'residencial' ? 'Barrio Residencial' : target.item.districtId === 'comercial' ? 'Corredor Comercial' : 'Zona Industrial';
+            showNotification(`🔓 ¡${clearedName} 100% LIMPIO! La barrera ecológica ha sido desbloqueada.`, 'text-emerald-300');
+            
+            // Unlock barrier in the 3D scene
+            state.barriers.forEach((b) => {
+              if (b.sourceDistrictId === target.item.districtId) {
+                b.setUnlocked(true);
+                b.barrierGroup.visible = false;
+                state.scene.remove(b.barrierGroup);
+              }
+            });
           }
-          return { ...prev, [dId]: remaining };
+          return updated;
         });
       }
 
-      // 5. Immediately clear HUD prompt
-      setActivePrompt(null);
-
-      // 6. Add to inventory & register score
       handleCollectTrash(target.item);
-    } else {
-      triggerArmSwing();
-      soundManager.playFootstep();
+      return;
     }
-  }, [handleDepositTrash, handleCollectTrash, triggerArmSwing, showNotification, spawnPickupParticles]);
+
+    // 2. SECOND PRIORITY: Check for nearby recycling bins on the sidewalk (within 2.8m)
+    const nearbyBins: { type: TrashItem['binType']; mesh: THREE.Object3D }[] = [
+      ...greenBins.map((mesh) => ({ type: 'green' as const, mesh })),
+      ...blueBins.map((mesh) => ({ type: 'blue' as const, mesh })),
+      ...yellowBins.map((mesh) => ({ type: 'yellow' as const, mesh })),
+      ...hazardBins.map((mesh) => ({ type: 'hazard' as const, mesh })),
+    ];
+    const nearestBin = nearbyBins
+      .map((bin) => ({ ...bin, distance: playerPos.distanceTo(bin.mesh.position) }))
+      .filter((bin) => bin.distance < 2.8)
+      .sort((a, b) => a.distance - b.distance)[0];
+
+    if (nearestBin) {
+      handleDepositTrash(nearestBin.type);
+      return;
+    }
+  }, [handleDepositTrash, handleCollectTrash, showNotification, spawnPickupParticles]);
 
   // Keep handleInteractionRef in sync
   handleInteractionRef.current = handleInteraction;
@@ -622,34 +655,21 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     );
 
     let missionItemIndex = 0;
-    districtConfigs.forEach((dCfg, districtIndex) => {
-      const count = districtCounts[districtIndex];
+    if (level.number === 1) {
+      // 5 clearly spaced, highly visible items on the open road & sidewalk for Level 1 (Ruta escolar)
+      const level1Placements = [
+        { x: 1.5, y: 0.14, z: 13.0 },  // Front right, school entrance lane
+        { x: -1.6, y: 0.14, z: 11.8 }, // Left road lane
+        { x: 1.8, y: 0.14, z: 10.5 },  // Right road lane
+        { x: -1.6, y: 0.14, z: 9.2 },  // Left road lane
+        { x: 0.2, y: 0.14, z: 8.0 },   // Center street, broad clear sightline, safely away from sidewalk bins at z=4.6 and z=7.4
+      ];
 
-      for (let i = 0; i < count; i++) {
-        const template = missionTemplates[missionItemIndex % missionTemplates.length];
-        missionItemIndex += 1;
-
-        // Lane distribution: Left sidewalk, Center road, Right sidewalk
-        const lane = i % 3;
-        let x = 0;
-        if (lane === 0) x = -4.5 + Math.sin(i * 1.5) * 1.2;
-        else if (lane === 1) x = Math.cos(i * 1.2) * 2.5;
-        else x = 4.5 + Math.sin(i * 2.1) * 1.2;
-
-        const progress = (i + 0.5) / count;
-        const z = dCfg.zMax - progress * (dCfg.zMax - dCfg.zMin) + (Math.sin(i * 2.5) * 0.9);
-
+      level1Placements.forEach((coord, i) => {
+        const template = missionTemplates[i % missionTemplates.length];
         const trashItem: TrashItem = {
-          id: `trash_${dCfg.districtId}_${i}_${template.modelType}`,
-          type: template.binType === 'hazard'
-            ? 'toxic'
-            : template.binType === 'green'
-            ? 'organic'
-            : template.binType === 'yellow'
-            ? 'glass'
-            : template.binType === 'instant'
-            ? 'powerup'
-            : 'bottle',
+          id: `trash_residencial_${i}_${template.modelType}`,
+          type: 'bottle',
           modelType: template.modelType,
           name: template.name,
           categoryName: template.categoryName,
@@ -657,18 +677,67 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           points: template.points,
           recyclable: template.recyclable,
           binType: template.binType,
-          districtId: dCfg.districtId,
-          x,
-          y: 0.1,
-          z,
+          districtId: 'residencial',
+          x: coord.x,
+          y: coord.y,
+          z: coord.z,
         };
 
         const mesh = createRealisticWasteMesh(trashItem);
+        mesh.position.set(coord.x, coord.y, coord.z);
         mesh.castShadow = true;
         scene.add(mesh);
         trashMeshes.push({ mesh, item: trashItem });
-      }
-    });
+      });
+    } else {
+      districtConfigs.forEach((dCfg, districtIndex) => {
+        const count = districtCounts[districtIndex];
+
+        for (let i = 0; i < count; i++) {
+          const template = missionTemplates[missionItemIndex % missionTemplates.length];
+          missionItemIndex += 1;
+
+          // Lane distribution: Left sidewalk, Center road, Right sidewalk
+          const lane = i % 3;
+          let x = 0;
+          if (lane === 0) x = -4.5 + Math.sin(i * 1.5) * 1.2;
+          else if (lane === 1) x = Math.cos(i * 1.2) * 2.5;
+          else x = 4.5 + Math.sin(i * 2.1) * 1.2;
+
+          const progress = (i + 0.5) / count;
+          const z = dCfg.zMax - progress * (dCfg.zMax - dCfg.zMin) + (Math.sin(i * 2.5) * 0.9);
+
+          const trashItem: TrashItem = {
+            id: `trash_${dCfg.districtId}_${i}_${template.modelType}`,
+            type: template.binType === 'hazard'
+              ? 'toxic'
+              : template.binType === 'green'
+              ? 'organic'
+              : template.binType === 'yellow'
+              ? 'glass'
+              : template.binType === 'instant'
+              ? 'powerup'
+              : 'bottle',
+            modelType: template.modelType,
+            name: template.name,
+            categoryName: template.categoryName,
+            ecoFact: template.ecoFact,
+            points: template.points,
+            recyclable: template.recyclable,
+            binType: template.binType,
+            districtId: dCfg.districtId,
+            x,
+            y: 0.14,
+            z,
+          };
+
+          const mesh = createRealisticWasteMesh(trashItem);
+          mesh.castShadow = true;
+          scene.add(mesh);
+          trashMeshes.push({ mesh, item: trashItem });
+        }
+      });
+    }
     const initialDistrictTrashLeft = {
       residencial: 0,
       comercial: 0,
@@ -690,12 +759,21 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
     camera.add(playerRig.armRoot);
     scene.add(camera);
 
+    // 10. THIRD-PERSON & SECOND-PERSON FULL 3D HERO CHARACTER RIG
+    const characterRig = createPlayerCharacterModel(character);
+    scene.add(characterRig.root);
+    characterRig.root.visible = false;
+
+    const initialPlayerPos = new THREE.Vector3(0, 0, 14);
+
     // Save state
     gameRef.current = {
       scene,
       camera,
       renderer,
+      playerPosition: initialPlayerPos,
       playerRig,
+      characterRig,
       trashObjects: trashMeshes,
       greenBins: streetResult.greenBins,
       blueBins: streetResult.blueBins,
@@ -724,7 +802,14 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         e.preventDefault();
       }
 
-      if (e.code === 'Escape' || e.code === 'KeyP') {
+      // Camera view toggle with KeyP (cycles 1st -> 2nd -> 3rd person)
+      if (e.code === 'KeyP') {
+        if (!e.repeat) cycleCameraView();
+        return;
+      }
+
+      // Pause toggle with Escape
+      if (e.code === 'Escape') {
         if (!e.repeat) togglePause();
         return;
       }
@@ -832,12 +917,6 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
 
       const state = gameRef.current;
       if (state && !isPausedRef.current && !state.isFinished) {
-        // Player Rotation
-        const euler = new THREE.Euler(0, 0, 0, 'YXZ');
-        euler.x = state.pitch;
-        euler.y = state.yaw;
-        state.camera.quaternion.setFromEuler(euler);
-
         // Movement with Character Speed Perk
         const baseSpeed = character.speed;
         const moveVec = new THREE.Vector3();
@@ -858,31 +937,31 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         if (state.isWalking) {
           moveVec.normalize();
           moveVec.applyAxisAngle(new THREE.Vector3(0, 1, 0), state.yaw);
-          state.camera.position.addScaledVector(moveVec, baseSpeed * delta);
+          state.playerPosition.addScaledVector(moveVec, baseSpeed * delta);
 
           // Boundaries across the extended 4-neighborhood avenue
-          state.camera.position.x = Math.max(-9.5, Math.min(9.5, state.camera.position.x));
-          state.camera.position.z = Math.max(-105, Math.min(18, state.camera.position.z));
+          state.playerPosition.x = Math.max(-9.5, Math.min(9.5, state.playerPosition.x));
+          state.playerPosition.z = Math.max(-105, Math.min(18, state.playerPosition.z));
 
           // Keep the clean-up route sequential: clear each sector before advancing.
           // 1. Centro de San Antonio -> Corredor comercial (Z Boundary = 2.0)
           const resLeft = state.trashObjects.filter((t) => t.item.districtId === 'residencial').length;
-          if (resLeft > 0 && state.camera.position.z <= 2.25) {
-            state.camera.position.z = 2.32;
+          if (resLeft > 0 && state.playerPosition.z <= 2.25) {
+            state.playerPosition.z = 2.32;
             triggerGateAlert('Centro de San Antonio de Prado', resLeft, 'Corredor comercial');
           }
 
           // 2. Corredor comercial -> Zona de talleres (Z Boundary = -38.0)
           const comLeft = state.trashObjects.filter((t) => t.item.districtId === 'comercial').length;
-          if (comLeft > 0 && state.camera.position.z <= -37.75) {
-            state.camera.position.z = -37.68;
+          if (comLeft > 0 && state.playerPosition.z <= -37.75) {
+            state.playerPosition.z = -37.68;
             triggerGateAlert('Corredor comercial', comLeft, 'Zona de talleres y servicios');
           }
 
           // 3. Zona de talleres -> Sendero de la quebrada (Z Boundary = -75.0)
           const indLeft = state.trashObjects.filter((t) => t.item.districtId === 'industrial').length;
-          if (indLeft > 0 && state.camera.position.z <= -74.75) {
-            state.camera.position.z = -74.68;
+          if (indLeft > 0 && state.playerPosition.z <= -74.75) {
+            state.playerPosition.z = -74.68;
             triggerGateAlert('Zona de talleres y servicios', indLeft, 'Sendero de la quebrada');
           }
 
@@ -894,14 +973,60 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           }
 
           state.walkCycle += delta * 10;
-          state.camera.position.y = 1.8 + Math.sin(state.walkCycle) * 0.04;
         }
+
+        // 3D Character Rig animation (for 2nd and 3rd person views)
+        state.characterRig.root.position.copy(state.playerPosition);
+        state.characterRig.root.rotation.y = state.yaw + Math.PI;
+        updatePlayerCharacterAnimation(
+          state.characterRig,
+          delta,
+          state.isWalking,
+          state.walkCycle,
+          state.playerRig.isGrabbing,
+          state.playerRig.grabT
+        );
 
         // Procedural First-Person Gloved Hand Animation (reaching, grabbing, idle bob)
         updatePlayerArmAnimation(state.playerRig, delta, state.isWalking, state.walkCycle);
 
+        // Camera Perspectives: 'first' (eyes) -> 'second' (front facing) -> 'third' (behind)
+        const currentCamMode = cameraViewRef.current;
+        if (currentCamMode === 'first') {
+          state.characterRig.root.visible = false;
+          state.playerRig.armRoot.visible = true;
+
+          const eyeHeight = 1.75 + (state.isWalking ? Math.sin(state.walkCycle) * 0.04 : 0);
+          state.camera.position.set(state.playerPosition.x, eyeHeight, state.playerPosition.z);
+
+          const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+          euler.x = state.pitch;
+          euler.y = state.yaw;
+          state.camera.quaternion.setFromEuler(euler);
+        } else if (currentCamMode === 'second') {
+          // Front perspective: Camera is in front of the hero, looking directly at face and torso
+          state.characterRig.root.visible = true;
+          state.playerRig.armRoot.visible = false;
+
+          const fwdDir = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw));
+          const camPos = state.playerPosition.clone().addScaledVector(fwdDir, 3.2);
+          camPos.y = 1.75;
+          state.camera.position.copy(camPos);
+          state.camera.lookAt(state.playerPosition.x, 1.35, state.playerPosition.z);
+        } else {
+          // Third perspective: Camera is behind the hero, looking forward over the shoulder
+          state.characterRig.root.visible = true;
+          state.playerRig.armRoot.visible = false;
+
+          const bwdDir = new THREE.Vector3(Math.sin(state.yaw), 0, Math.cos(state.yaw));
+          const camPos = state.playerPosition.clone().addScaledVector(bwdDir, 3.6);
+          camPos.y = 2.2;
+          state.camera.position.copy(camPos);
+          state.camera.lookAt(state.playerPosition.x, 1.35, state.playerPosition.z);
+        }
+
         // Dynamic Neighborhood Tracking as player advances down the street
-        const currentDistrictInfo = getDistrictAtZ(state.camera.position.z);
+        const currentDistrictInfo = getDistrictAtZ(state.playerPosition.z);
         if (currentDistrictInfo.id !== lastDistrictIdRef.current) {
           lastDistrictIdRef.current = currentDistrictInfo.id;
           setCurrentDistrict(currentDistrictInfo);
@@ -921,7 +1046,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           let minD = 999;
           let closestName = '';
           curDistrictTrash.forEach((t) => {
-            const d = state.camera.position.distanceTo(t.mesh.position);
+            const d = state.playerPosition.distanceTo(t.mesh.position);
             if (d < minD) {
               minD = d;
               closestName = t.item.name;
@@ -971,7 +1096,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         }
 
         // Proximity detection for the nearest classified collection point.
-        const playerPos = state.camera.position;
+        const playerPos = state.playerPosition;
         const collectionPoints: { type: TrashItem['binType']; name: string; meshes: THREE.Object3D[] }[] = [
           { type: 'green', name: 'orgánicos', meshes: state.greenBins },
           { type: 'blue', name: 'aprovechables', meshes: state.blueBins },
@@ -981,21 +1106,21 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         const nearestPoint = collectionPoints
           .flatMap((point) => point.meshes.map((mesh) => ({ type: point.type, name: point.name, mesh })))
           .map((point) => ({ ...point, distance: playerPos.distanceTo(point.mesh.position) }))
-          .filter((point) => point.distance < 5.2)
+          .filter((point) => point.distance < 2.8)
           .sort((a, b) => a.distance - b.distance)[0];
 
         if (nearestPoint) {
           const matchingCount = inventoryRef.current.filter((item) => item.binType === nearestPoint.type).length;
           setActivePrompt(
             matchingCount > 0
-              ? `Presiona [E] para depositar ${matchingCount} residuo(s) ${nearestPoint.name}`
+              ? `Presiona [ESPACIO / E] para depositar ${matchingCount} residuo(s) ${nearestPoint.name}`
               : `Punto ${nearestPoint.name}: no llevas residuos de esta categoría`
           );
         } else {
           let foundNearbyTrash: string | null = null;
           state.trashObjects.forEach((obj) => {
             if (obj.mesh.visible && playerPos.distanceTo(obj.mesh.position) < 3.8) {
-              foundNearbyTrash = `[E] Recoger ${obj.item.name} con Guante Protector (${obj.item.categoryName || 'Residuo'})`;
+              foundNearbyTrash = `[ESPACIO / E] Recoger ${obj.item.name} (${obj.item.categoryName || 'Residuo'})`;
             }
           });
           setActivePrompt(foundNearbyTrash);
@@ -1039,7 +1164,11 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
 
     gameRef.current.animFrameId = requestAnimationFrame(animate);
 
+    // Start procedural environmental music tailored to this level's setting
+    soundManager.playLevelMusic(level.number);
+
     return () => {
+      soundManager.stopMusic();
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       window.removeEventListener('blur', handleWindowBlur);
@@ -1181,8 +1310,33 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           </div>
         </div>
 
-        {/* Right: Timer & Pause */}
-        <div className="flex items-center gap-2 pointer-events-auto">
+        {/* Right: Camera Switcher [P], Audio Mute, Timer & Pause */}
+        <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
+          {/* Camera switcher button [P] */}
+          <button
+            onClick={cycleCameraView}
+            className="h-10 px-2.5 sm:px-3 rounded-xl bg-slate-900/90 border-2 border-slate-700 hover:border-sky-400 flex items-center gap-1.5 text-white shadow-[3px_3px_0_#000] cursor-pointer transition-all active:translate-y-0.5"
+            title="Cambiar perspectiva (Tecla P): 1ª persona, 2ª persona o 3ª persona"
+          >
+            <Camera className="w-4 h-4 text-sky-400" />
+            <span className="text-xs font-bold text-sky-300 font-mono hidden sm:inline">
+              [P] {cameraView === 'first' ? '1ª Pers.' : cameraView === 'second' ? '2ª Pers.' : '3ª Pers.'}
+            </span>
+          </button>
+
+          {/* Mute toggle button */}
+          <button
+            onClick={() => {
+              const nextMute = !soundManager.isMuted;
+              soundManager.isMuted = nextMute;
+              setIsMuted(nextMute);
+            }}
+            className="w-10 h-10 rounded-xl bg-slate-900/90 border-2 border-slate-700 hover:border-amber-400 flex items-center justify-center text-white shadow-[3px_3px_0_#000] cursor-pointer transition-all"
+            title={isMuted ? 'Activar música y efectos' : 'Silenciar música y efectos'}
+          >
+            {isMuted ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5 text-emerald-400" />}
+          </button>
+
           <div className="bg-slate-900/90 border-2 border-slate-700 px-3 py-2 rounded-xl text-amber-300 font-mono text-sm font-bold shadow-[3px_3px_0_#000]">
             ⏱️ {timeLeft}s
           </div>
@@ -1190,7 +1344,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
           <button
             onClick={() => setGamePaused(true)}
             className="w-10 h-10 rounded-xl bg-slate-900/90 border-2 border-slate-700 hover:border-slate-500 flex items-center justify-center text-white shadow-[3px_3px_0_#000] cursor-pointer"
-            title="Pausar juego (ESC o P)"
+            title="Pausar juego (ESC)"
           >
             <Pause className="w-5 h-5" />
           </button>
@@ -1275,77 +1429,78 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
         </div>
       )}
 
-      {/* Bottom Inventory Hotbar */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-30 bg-slate-900/95 border-4 border-slate-700 p-2 sm:p-2.5 rounded-2xl shadow-[4px_4px_0_#000] flex items-center gap-1.5 sm:gap-2 pointer-events-auto">
-        {[0, 1, 2, 3, 4, 5].map((slotIdx) => {
-          const item = inventory[slotIdx];
+      {/* Bottom Inventory Hotbar (16 slots organized in 2 rows of 8) */}
+      <div className="absolute bottom-3 left-1/2 transform -translate-x-1/2 z-30 bg-slate-900/95 border-3 border-slate-700 p-2 rounded-2xl shadow-[4px_4px_0_#000] flex flex-col sm:flex-row items-center gap-2 pointer-events-auto max-w-[96vw]">
+        <div className="grid grid-cols-8 gap-1">
+          {Array.from({ length: 16 }).map((_, slotIdx) => {
+            const item = inventory[slotIdx];
 
-          const getRealisticIcon = (modelType?: string) => {
-            switch (modelType) {
-              case 'crushed_pet_bottle': return '🧴';
-              case 'crushed_soda_can': return '🥤';
-              case 'juice_tetra_pack': return '🧃';
-              case 'snack_chips_bag': return '🥨';
-              case 'crinkled_plastic_cup': return '🥛';
-              case 'banana_peel_organic': return '🍌';
-              case 'bitten_apple_core': return '🍎';
-              case 'greasy_pizza_box': return '🍕';
-              case 'paper_coffee_cup': return '☕';
-              case 'plastic_sandwich_wrap': return '🥪';
-              case 'green_glass_beer_bottle': return '🍾';
-              case 'amber_glass_preserve_jar': return '🫙';
-              case 'wet_rolled_newspaper': return '📰';
-              case 'rusty_canned_tin': return '🥫';
-              case 'used_car_tire': return '🛞';
-              case 'dented_aerosol_spray': return '🧴';
-              case 'toxic_chemical_drum': return '🛢️';
-              case 'leaking_car_battery': return '🔋';
-              case 'broken_mercury_fluorescent': return '💡';
-              case 'motor_oil_jug': return '🛢️';
-              case 'chemical_glass_flask': return '🧪';
-              case 'burnt_pcb_ewaste': return '📟';
-              case 'pulsing_toxic_core': return '☢️';
-              case 'radioactive_fuel_cell': return '⚡';
-              case 'mutated_sludge_bag': return '👾';
-              case 'clean_air_canister': return '💨';
-              case 'crystal_purifier_capsule': return '💎';
-              default: return '🗑️';
-            }
-          };
+            const getRealisticIcon = (modelType?: string) => {
+              switch (modelType) {
+                case 'crushed_pet_bottle': return '🧴';
+                case 'crushed_soda_can': return '🥤';
+                case 'juice_tetra_pack': return '🧃';
+                case 'snack_chips_bag': return '🥨';
+                case 'crinkled_plastic_cup': return '🥛';
+                case 'banana_peel_organic': return '🍌';
+                case 'bitten_apple_core': return '🍎';
+                case 'greasy_pizza_box': return '🍕';
+                case 'paper_coffee_cup': return '☕';
+                case 'plastic_sandwich_wrap': return '🥪';
+                case 'green_glass_beer_bottle': return '🍾';
+                case 'amber_glass_preserve_jar': return '🫙';
+                case 'wet_rolled_newspaper': return '📰';
+                case 'rusty_canned_tin': return '🥫';
+                case 'used_car_tire': return '🛞';
+                case 'dented_aerosol_spray': return '🧴';
+                case 'toxic_chemical_drum': return '🛢️';
+                case 'leaking_car_battery': return '🔋';
+                case 'broken_mercury_fluorescent': return '💡';
+                case 'motor_oil_jug': return '🛢️';
+                case 'chemical_glass_flask': return '🧪';
+                case 'burnt_pcb_ewaste': return '📟';
+                case 'pulsing_toxic_core': return '☢️';
+                case 'radioactive_fuel_cell': return '⚡';
+                case 'mutated_sludge_bag': return '👾';
+                case 'clean_air_canister': return '💨';
+                case 'crystal_purifier_capsule': return '💎';
+                default: return '🗑️';
+              }
+            };
 
-          return (
-            <div
-              key={slotIdx}
-              className={`w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 flex flex-col items-center justify-center relative transition-all ${
-                item
-                  ? 'bg-slate-800 border-emerald-400 shadow-[inset_0_2px_0_rgba(255,255,255,0.2)]'
-                  : 'bg-slate-950/80 border-slate-800'
-              }`}
-              title={item ? `${item.name} (${item.categoryName})` : 'Casilla vacía'}
-            >
-              {item && (
-                <>
-                  <span className="text-xl sm:text-2xl leading-none">
-                    {getRealisticIcon(item.modelType)}
-                  </span>
-                  <span className="text-[9px] font-mono text-emerald-300 font-bold leading-none mt-0.5 max-w-[46px] truncate">
-                    {item.name.split(' ')[0]}
-                  </span>
-                </>
-              )}
-            </div>
-          );
-        })}
+            return (
+              <div
+                key={slotIdx}
+                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg border flex flex-col items-center justify-center relative transition-all ${
+                  item
+                    ? 'bg-slate-800 border-emerald-400 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]'
+                    : 'bg-slate-950/80 border-slate-800'
+                }`}
+                title={item ? `${item.name} (${item.categoryName})` : `Casilla ${slotIdx + 1} vacía`}
+              >
+                {item ? (
+                  <>
+                    <span className="text-base sm:text-xl leading-none">
+                      {getRealisticIcon(item.modelType)}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-[9px] text-slate-700 font-mono">{slotIdx + 1}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
-        <div className="pl-2 sm:pl-3 border-l-2 border-slate-700 text-xs text-slate-300">
-          <div className="font-bold text-white flex items-center gap-1.5">
-            <span>Mochila ({inventory.length}/6)</span>
+        <div className="sm:pl-3 sm:border-l-2 sm:border-slate-700 text-xs text-slate-300 text-center sm:text-left shrink-0">
+          <div className="font-bold text-white flex items-center justify-center sm:justify-start gap-1.5">
+            <span>Mochila ({inventory.length}/16)</span>
             <span className="text-[10px] font-mono text-amber-300 font-bold bg-slate-800 px-1.5 py-0.2 rounded border border-slate-700">
               {level.difficulty}
             </span>
           </div>
           <div className="text-[10px] text-emerald-400 mt-0.5">
-            {level.bossMode ? '¡Lleva al contenedor para disparar rayos!' : '[E] / [Espacio] recoger o depositar'}
+            [ESPACIO / E] Recoger o Depositar · [P] Cámara
           </div>
         </div>
       </div>
@@ -1358,7 +1513,7 @@ export const FirstPersonGame: React.FC<FirstPersonGameProps> = ({
             <span>Haz clic en la pantalla para controlar la vista con el ratón</span>
           </div>
           <p className="text-xs text-slate-300">
-            Camina con [W, A, S, D] o flechas · Acción [E] o [Espacio] · Pausa [ESC] o [P]
+            Camina con [W, A, S, D] o flechas · Acción [ESPACIO] o [E] · Cámara [P] · Pausa [ESC]
           </p>
         </div>
       )}

@@ -260,6 +260,7 @@ export function buildNeighborhoodStreet(
       sign.rotation.y = side === 'left' ? Math.PI / 2 : -Math.PI / 2;
       group.add(sign);
 
+      group.userData = { binType: t, label, colorHex };
       scene.add(group);
 
       if (t === 'green') greenBins.push(group);
